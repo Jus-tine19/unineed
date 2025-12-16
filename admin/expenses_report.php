@@ -1,5 +1,5 @@
 <?php
-// admin/expenses_report.php
+
 require_once '../config/database.php';
 requireAdmin();
 

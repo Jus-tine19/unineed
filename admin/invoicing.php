@@ -1,5 +1,5 @@
 <?php
-// admin/invoicing.php
+
 require_once '../config/database.php';
 requireAdmin();
 

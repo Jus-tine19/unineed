@@ -1,5 +1,5 @@
 <?php
-// student/notifications.php
+
 require_once '../config/database.php';
 requireStudent();
 

@@ -1,5 +1,5 @@
 <?php
-// admin/cogs.php
+
 require_once '../config/database.php';
 requireAdmin();
 

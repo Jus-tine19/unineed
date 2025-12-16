@@ -1,8 +1,0 @@
-{
-    "name": "unineeds/app",
-    "description": "UniNeeds Application",
-    "type": "project",
-    "require": {
-        "dompdf/dompdf": "2.0"
-    }
-}

@@ -1,238 +1,204 @@
 <?php
-require_once '../includes/header.php';
+require_once '../config/database.php';
+requireStudent();
 
-// Ensure user is a student
-if ($_SESSION['user_type'] !== 'student') {
-    header("Location: /unineeds/index.php");
-    exit();
+// Get current user data
+$user_id = $_SESSION['user_id'];
+$query = "SELECT * FROM users WHERE user_id = $user_id";
+$result = mysqli_query($conn, $query);
+$user = mysqli_fetch_assoc($result);
+
+// Handle Profile Update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
+    $phone = clean($_POST['phone']);
+    
+    $update_query = "UPDATE users SET 
+                    phone = '$phone'
+                    WHERE user_id = $user_id";
+    
+    if (mysqli_query($conn, $update_query)) {
+        $success = "Profile updated successfully!";
+        // Refresh user data
+        $result = mysqli_query($conn, $query);
+        $user = mysqli_fetch_assoc($result);
+    } else {
+        $error = "Failed to update profile.";
+    }
 }
 
-// Get user details
-$stmt = $conn->prepare("SELECT * FROM users WHERE user_id = ?");
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$user = $stmt->get_result()->fetch_assoc();
-
-// Handle form submission
-$success_message = '';
-$error_message = '';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['update_profile'])) {
-        $name = trim($_POST['name']);
-        $email = trim($_POST['email']);
-        $phone = trim($_POST['phone']);
-        
-        // Validate email format
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $error_message = "Invalid email format";
-        } else {
-            // Check if email is already taken by another user
-            $stmt = $conn->prepare("SELECT user_id FROM users WHERE email = ? AND user_id != ?");
-            $stmt->bind_param("si", $email, $user_id);
-            $stmt->execute();
-            if ($stmt->get_result()->num_rows > 0) {
-                $error_message = "Email is already taken";
-            } else {
-                // Update profile
-                $stmt = $conn->prepare("UPDATE users SET full_name = ?, email = ?, phone = ? WHERE user_id = ?");
-                $stmt->bind_param("sssi", $name, $email, $phone, $user_id);
-                if ($stmt->execute()) {
-                    $success_message = "Profile updated successfully";
-                    // Refresh user data
-                    $stmt = $conn->prepare("SELECT * FROM users WHERE user_id = ?");
-                    $stmt->bind_param("i", $user_id);
-                    $stmt->execute();
-                    $user = $stmt->get_result()->fetch_assoc();
+// Handle Password Change
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
+    $current_password = $_POST['current_password'];
+    $new_password = $_POST['new_password'];
+    $confirm_password = $_POST['confirm_password'];
+    
+    if (password_verify($current_password, $user['password'])) {
+        if ($new_password === $confirm_password) {
+            if (strlen($new_password) >= 6) {
+                $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+                $update_query = "UPDATE users SET password = '$hashed_password' WHERE user_id = $user_id";
+                
+                if (mysqli_query($conn, $update_query)) {
+                    $success = "Password changed successfully!";
                 } else {
-                    $error_message = "Error updating profile";
+                    $error = "Failed to change password.";
                 }
-            }
-        }
-    } elseif (isset($_POST['change_password'])) {
-        $current_password = $_POST['current_password'];
-        $new_password = $_POST['new_password'];
-        $confirm_password = $_POST['confirm_password'];
-
-        // Verify current password
-        if (!password_verify($current_password, $user['password'])) {
-            $error_message = "Current password is incorrect";
-        } elseif (strlen($new_password) < 8) {
-            $error_message = "New password must be at least 8 characters long";
-        } elseif ($new_password !== $confirm_password) {
-            $error_message = "New passwords do not match";
-        } else {
-            // Update password
-            $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("UPDATE users SET password = ? WHERE user_id = ?");
-            $stmt->bind_param("si", $hashed_password, $user_id);
-            if ($stmt->execute()) {
-                $success_message = "Password changed successfully";
             } else {
-                $error_message = "Error changing password";
+                $error = "Password must be at least 6 characters long.";
             }
+        } else {
+            $error = "New passwords do not match.";
         }
+    } else {
+        $error = "Current password is incorrect.";
     }
 }
 ?>
-
-<!-- Main Layout -->
-<div class="d-flex">
-    <!-- Sidebar -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - UniNeeds Student</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
     <?php include 'includes/sidebar.php'; ?>
+    
+    <div class="main-content">
+        <div class="top-bar">
+            <button class="btn btn-link d-md-none" id="sidebarToggle">
+                <i class="bi bi-list fs-3"></i>
+            </button>
+            <h2>Settings</h2>
+        </div>
+        
+        <div class="content-area">
 
-    <!-- Main content -->
-    <div class="main-content flex-grow-1 bg-light">
-        <div class="container-fluid px-4 py-4">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2 class="page-title mb-0">Settings</h2>
+            <?php if (isset($success)): ?>
+            <div class="alert alert-success alert-dismissible fade show">
+                <i class="bi bi-check-circle me-2"></i><?php echo $success; ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
+            <?php endif; ?>
+        
+            <?php if (isset($error)): ?>
+            <div class="alert alert-danger alert-dismissible fade show">
+                <i class="bi bi-exclamation-triangle me-2"></i><?php echo $error; ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            <?php endif; ?>
 
-    <?php if ($success_message): ?>
-        <div class="alert alert-success" role="alert">
-            <?php echo $success_message; ?>
-        </div>
-    <?php endif; ?>
-
-    <?php if ($error_message): ?>
-        <div class="alert alert-danger" role="alert">
-            <?php echo $error_message; ?>
-        </div>
-    <?php endif; ?>
-
-    <div class="row g-4">
-        <!-- Profile Settings -->
-        <div class="col-12 col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-3">
-                    <h5 class="card-title mb-0">Profile Settings</h5>
+            <div class="row g-4">
+                <!-- Profile Information -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-person me-2"></i>Profile Information</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST">
+                                <div class="mb-3">
+                                    <label class="form-label">Student ID</label>
+                                    <input type="text" class="form-control" value="<?php echo htmlspecialchars($user['student_id']); ?>" readonly>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Full Name</label>
+                                    <input type="text" class="form-control" value="<?php echo htmlspecialchars($user['full_name']); ?>" readonly>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Email Address</label>
+                                    <input type="email" class="form-control" value="<?php echo htmlspecialchars($user['email']); ?>" readonly>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Phone Number</label>
+                                    <input type="text" class="form-control" name="phone" value="<?php echo htmlspecialchars($user['phone']); ?>" placeholder="09XXXXXXXXX">
+                                </div>
+                                <button type="submit" name="update_profile" class="btn btn-primary mt-3">
+                                    <i class="bi bi-save me-2"></i>Update Profile
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Change Password -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-shield-lock me-2"></i>Change Password</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST">
+                                <div class="mb-3">
+                                    <label class="form-label">Current Password *</label>
+                                    <input type="password" class="form-control" name="current_password" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">New Password *</label>
+                                    <input type="password" class="form-control" name="new_password" required minlength="6">
+                                    <small class="text-muted">Minimum 6 characters</small>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Confirm New Password *</label>
+                                    <input type="password" class="form-control" name="confirm_password" required minlength="6">
+                                </div>
+                                <button type="submit" name="change_password" class="btn btn-warning mt-3">
+                                    <i class="bi bi-key me-2"></i>Change Password
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Logout -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-box-arrow-right me-2"></i>Logout</h5>
                 </div>
                 <div class="card-body">
-                    <form method="post">
-                        <div class="mb-3">
-                            <label for="name" class="form-label">Full Name</label>
-                            <input type="text" class="form-control" id="name" name="name" 
-                                   value="<?php echo htmlspecialchars($user['full_name']); ?>" required>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6>Sign out</h6>
+                            <p class="text-muted mb-0">Click below to end your session and return to the login page.</p>
+                        <script src="../assets/js/script.js"></script>
                         </div>
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="email" class="form-control" id="email" name="email" 
-                                   value="<?php echo htmlspecialchars($user['email']); ?>" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="phone" class="form-label">Phone Number</label>
-                            <input type="tel" class="form-control" id="phone" name="phone" 
-                                   value="<?php echo htmlspecialchars($user['phone']); ?>">
-                        </div>
-                        <button type="submit" name="update_profile" class="btn btn-primary">
-                            Save Changes
-                        </button>
-                    </form>
+                        <a href="../api/logout.php" class="btn btn-outline-danger">
+                            <i class="bi bi-box-arrow-right me-2"></i>Logout
+                        </a>
+                    </div>
                 </div>
             </div>
+
         </div>
 
-        <!-- Change Password -->
-        <div class="col-12 col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-3">
-                    <h5 class="card-title mb-0">Change Password</h5>
-                </div>
-                <div class="card-body">
-                    <form method="post">
-                        <div class="mb-3">
-                            <label for="current_password" class="form-label">Current Password</label>
-                            <input type="password" class="form-control" id="current_password" 
-                                   name="current_password" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="new_password" class="form-label">New Password</label>
-                            <input type="password" class="form-control" id="new_password" 
-                                   name="new_password" required>
-                            <small class="text-muted">Minimum 8 characters</small>
-                        </div>
-                        <div class="mb-3">
-                            <label for="confirm_password" class="form-label">Confirm New Password</label>
-                            <input type="password" class="form-control" id="confirm_password" 
-                                   name="confirm_password" required>
-                        </div>
-                        <button type="submit" name="change_password" class="btn btn-primary">
-                            Change Password
-                        </button>
-                    </form>
-                </div>
-            </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         </div>
-
-        <!-- Notification Settings -->
-        <div class="col-12 col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-3">
-                    <h5 class="card-title mb-0">Notification Settings</h5>
-                </div>
-                <div class="card-body">
-                    <form method="post" id="notificationForm">
-                        <div class="mb-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="order_updates" 
-                                       name="notifications[order_updates]" checked>
-                                <label class="form-check-label" for="order_updates">
-                                    Order Updates
-                                </label>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="product_alerts" 
-                                       name="notifications[product_alerts]" checked>
-                                <label class="form-check-label" for="product_alerts">
-                                    Product Alerts
-                                </label>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="promotional_emails" 
-                                       name="notifications[promotional_emails]">
-                                <label class="form-check-label" for="promotional_emails">
-                                    Promotional Emails
-                                </label>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-$(document).ready(function() {
-    // Auto-save notification settings when changed
-    $('.form-check-input').change(function() {
-        const data = $('#notificationForm').serialize();
-        $.post('/unineeds/api/update-notification-settings.php', data, function(response) {
-            if (response.success) {
-                // Show a temporary success message
-                const alert = $('<div class="alert alert-success alert-dismissible fade show" role="alert">' +
-                              'Notification settings updated successfully' +
-                              '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>' +
-                              '</div>');
-                $('.card-body').first().prepend(alert);
-                setTimeout(() => alert.alert('close'), 3000);
-            }
-        });
-    });
-});
-</script>
-
-    </div>
-</div>
 
 <style>
 .main-content {
     min-height: 100vh;
     margin-left: 250px;
+    background-color: #f5f6f8;
+}
+
+.content-area {
+    padding: 30px;
+}
+
+.top-bar {
+    background-color: white;
+    padding: 20px 30px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.top-bar h2 {
+    color: #2c3345;
+    font-weight: 600;
+    margin: 0;
 }
 
 .page-title {
@@ -242,33 +208,135 @@ $(document).ready(function() {
 
 .card {
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+    background-color: white;
 }
 
 .card-header {
-    border-bottom: 1px solid rgba(0,0,0,.1);
+    background-color: white;
+    border-bottom: 1px solid #e8e9eb;
+    padding: 20px;
+    border-radius: 12px 12px 0 0;
+}
+
+.card-header h5 {
+    color: #2c3345;
+    font-weight: 600;
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.card-body {
+    padding: 25px;
+}
+
+.form-label {
+    color: #2c3345;
+    font-weight: 500;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
 }
 
 .form-control {
-    padding: 0.75rem 1rem;
+    padding: 10px 14px;
+    border: 1px solid #dddfe3;
     border-radius: 8px;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
 }
 
 .form-control:focus {
-    border-color: #4CAF50;
-    box-shadow: 0 0 0 0.2rem rgba(76, 175, 80, 0.25);
+    border-color: #FF8C00;
+    box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+}
+
+.form-control:disabled,
+.form-control[readonly] {
+    background-color: #f5f6f8;
+    border-color: #e8e9eb;
+    color: #666;
 }
 
 .btn-primary {
     background-color: #4CAF50;
     border-color: #4CAF50;
-    padding: 0.75rem 1.5rem;
+    padding: 10px 20px;
     border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s ease;
 }
 
 .btn-primary:hover {
     background-color: #388E3C;
     border-color: #388E3C;
+    box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+}
+
+.btn-warning {
+    background-color: #FF8C00;
+    border-color: #FF8C00;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 500;
+    color: white;
+    transition: all 0.3s ease;
+}
+
+.btn-warning:hover {
+    background-color: #E67E00;
+    border-color: #E67E00;
+    box-shadow: 0 4px 8px rgba(255, 140, 0, 0.3);
+}
+
+.btn-outline-danger {
+    border: 1px solid #dc3545;
+    color: #dc3545;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn-outline-danger:hover {
+    background-color: #dc3545;
+    color: white;
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+}
+
+.alert {
+    border: none;
+    border-radius: 8px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+    font-size: 0.95rem;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    color: #155724;
+    border-left: 4px solid #28a745;
+}
+
+.alert-danger {
+    background-color: #f8d7da;
+    color: #721c24;
+    border-left: 4px solid #dc3545;
+}
+
+.small.text-muted {
+    color: #888 !important;
+    font-size: 0.85rem;
+}
+
+.row.g-4 > .col-md-6 {
+    display: flex;
+    flex-direction: column;
+}
+
+.row.g-4 > .col-md-6 .card {
+    flex: 1;
 }
 
 @media (max-width: 768px) {
@@ -276,7 +344,19 @@ $(document).ready(function() {
         margin-left: 0;
         padding-top: 60px;
     }
+    
+    .content-area {
+        padding: 15px;
+    }
+    
+    .top-bar {
+        padding: 15px;
+    }
 }
 </style>
 
-<?php require_once '../includes/footer.php'; ?>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="../assets/js/mobile-menu.js"></script>
+
+</body>
+</html>

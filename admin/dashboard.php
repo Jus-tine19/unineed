@@ -1,9 +1,9 @@
 <?php
-// admin/dashboard.php
+
 require_once '../config/database.php';
 requireAdmin();
 
-// Get statistics
+// Get stats
 $stats = [];
 
 // Total Orders
@@ -65,6 +65,9 @@ $monthly_sales = mysqli_query($conn, $query);
     
     <div class="main-content">
         <div class="top-bar">
+            <button class="btn btn-link d-md-none" id="sidebarToggle">
+                <i class="bi bi-list fs-3"></i>
+            </button>
             <h2>Dashboard</h2>
             <div class="ms-auto">
                 <span class="text-muted"><?php echo date('l, F j, Y'); ?></span>
@@ -218,6 +221,8 @@ $monthly_sales = mysqli_query($conn, $query);
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="../assets/js/script.js"></script>
+    <script src="../assets/js/mobile-menu.js"></script>
 </body>
 </html>

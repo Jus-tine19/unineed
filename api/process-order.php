@@ -49,26 +49,38 @@ try {
     }
 
     // Create order
-    $stmt = $conn->prepare("
-        INSERT INTO orders (user_id, total_amount, order_status, payment_status, payment_method) 
-        VALUES (?, ?, 'pending', 'pending', 'cod')
-    ");
+    $stmt = $conn->prepare(
+        "INSERT INTO orders (user_id, total_amount, order_status, payment_status, payment_method) 
+        VALUES (?, ?, 'pending', 'pending', 'cod')"
+    );
     $stmt->bind_param("id", $user_id, $total_amount);
     $stmt->execute();
     $order_id = $conn->insert_id;
 
-    // Create order items and update stock
-    $stmt = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
-    $stmt_stock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE product_id = ?");
+    // Prepare statements for order items and stock updates
+    $stmt_item = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
+    $stmt_update_product = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE product_id = ?");
 
     foreach ($items as $item) {
+        error_log("process-order: Processing item - product_id={$item['product_id']}, quantity={$item['quantity']}, price={$item['price']}");
+        
         // Add to order items
-        $stmt->bind_param("iiid", $order_id, $item['product_id'], $item['quantity'], $item['price']);
-        $stmt->execute();
+        $stmt_item->bind_param("iiid", $order_id, $item['product_id'], $item['quantity'], $item['price']);
+        if (!$stmt_item->execute()) {
+            throw new Exception("Failed to insert order item: " . mysqli_stmt_error($stmt_item));
+        }
+        error_log("process-order: Inserted order_item for order_id={$order_id}, product_id={$item['product_id']}");
 
-        // Update stock
-        $stmt_stock->bind_param("ii", $item['quantity'], $item['product_id']);
-        $stmt_stock->execute();
+        // Update product stock (decrement by quantity)
+        $stmt_update_product->bind_param("ii", $item['quantity'], $item['product_id']);
+        $success = $stmt_update_product->execute();
+        error_log("process-order: Stock update query - UPDATE products SET stock_quantity = stock_quantity - {$item['quantity']} WHERE product_id = {$item['product_id']}");
+        
+        if (!$success) {
+            error_log("process-order: FAILED - " . mysqli_stmt_error($stmt_update_product));
+            throw new Exception("Failed to update stock for product " . $item['product_id'] . ": " . mysqli_stmt_error($stmt_update_product));
+        }
+        error_log("process-order: SUCCESS - decremented product_id={$item['product_id']} by {$item['quantity']}, affected_rows=" . $stmt_update_product->affected_rows);
     }
 
     // Clear cart

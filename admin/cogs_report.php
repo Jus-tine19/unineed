@@ -1,5 +1,5 @@
 <?php
-// admin/cogs_report.php
+
 require_once '../config/database.php';
 requireAdmin();
 

@@ -1,5 +1,5 @@
 <?php
-// admin/users.php
+
 require_once '../config/database.php';
 requireAdmin();
 
@@ -11,6 +11,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
     $student_id = clean($_POST['student_id']);
     $course = isset($_POST['course']) ? clean($_POST['course']) : '';
     $year_level = isset($_POST['year_level']) ? clean($_POST['year_level']) : '';
+    $section = isset($_POST['section']) ? clean($_POST['section']) : ''; 
+// Default password    
     $password = password_hash('@Student01', PASSWORD_DEFAULT);
     
     $check_query = "SELECT * FROM users WHERE email = '$email'";
@@ -19,8 +21,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
     if (mysqli_num_rows($check_result) > 0) {
         $error = "Email already exists!";
     } else {
-        $query = "INSERT INTO users (email, password, user_type, full_name, phone, student_id, course, year_level) 
-                 VALUES ('$email', '$password', 'student', '$full_name', '$phone', '$student_id', '$course', '$year_level')";
+        $query = "INSERT INTO users (email, password, user_type, full_name, phone, student_id, course, year_level, section) 
+                 VALUES ('$email', '$password', 'student', '$full_name', '$phone', '$student_id', '$course', '$year_level', '$section')";
         if (mysqli_query($conn, $query)) {
             $success = "Student added successfully! Default password: @Student01";
         } else {
@@ -38,6 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_user'])) {
     $student_id = clean($_POST['student_id']);
     $course = isset($_POST['course']) ? clean($_POST['course']) : '';
     $year_level = isset($_POST['year_level']) ? clean($_POST['year_level']) : '';
+    $section = isset($_POST['section']) ? clean($_POST['section']) : ''; 
 
     $query = "UPDATE users SET 
              email = '$email',
@@ -45,7 +48,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_user'])) {
              phone = '$phone',
              student_id = '$student_id',
              course = '$course',
-             year_level = '$year_level'
+             year_level = '$year_level',
+             section = '$section'
              WHERE user_id = $user_id";
     if (mysqli_query($conn, $query)) {
         $success = "Student updated successfully!";
@@ -66,18 +70,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_upload']) && iss
         $row++;
         if ($row == 1) continue; // Skip header
         
-        $email = clean($data[0]);
-        $full_name = clean($data[1]);
-        $phone = clean($data[2]);
-        $student_id = clean($data[3]);
+        // New CSV format: student_id, full_name, email, phone, course, year_level, section
+        $student_id = isset($data[0]) ? clean($data[0]) : '';
+        $full_name = isset($data[1]) ? clean($data[1]) : '';
+        $email = isset($data[2]) ? clean($data[2]) : '';
+        $phone = isset($data[3]) ? clean($data[3]) : '';
+        $course = isset($data[4]) ? clean($data[4]) : '';
+        $year_level = isset($data[5]) ? clean($data[5]) : '';
+        $section = isset($data[6]) ? clean($data[6]) : '';
+
         $password = password_hash('@Student01', PASSWORD_DEFAULT);
-        
-        $check_query = "SELECT * FROM users WHERE email = '$email'";
+
+        // Skip rows without email or student_id
+        if (empty($email) && empty($student_id)) {
+            $skipped++;
+            continue;
+        }
+
+        $check_query = "SELECT * FROM users WHERE email = '$email' OR student_id = '$student_id'";
         $check_result = mysqli_query($conn, $check_query);
-        
-            if (mysqli_num_rows($check_result) == 0) {
-            $query = "INSERT INTO users (email, password, user_type, full_name, phone, student_id) 
-                     VALUES ('$email', '$password', 'student', '$full_name', '$phone', '$student_id')";
+
+        if (mysqli_num_rows($check_result) == 0) {
+            $query = "INSERT INTO users (email, password, user_type, full_name, phone, student_id, course, year_level, section) 
+                     VALUES ('$email', '$password', 'student', '$full_name', '$phone', '$student_id', '$course', '$year_level', '$section')";
             if (mysqli_query($conn, $query)) {
                 $added++;
             }
@@ -118,6 +133,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user'])) {
 // Get users
 $status_filter = isset($_GET['status']) ? clean($_GET['status']) : 'active';
 $search = isset($_GET['search']) ? clean($_GET['search']) : '';
+$course_filter = isset($_GET['course_filter']) ? clean($_GET['course_filter']) : ''; 
+$year_level_filter = isset($_GET['year_level_filter']) ? clean($_GET['year_level_filter']) : '';
+$section_filter = isset($_GET['section_filter']) ? clean($_GET['section_filter']) : '';
+
+// Define available courses (used in Modals and Filters)
+$all_courses = [
+    'Bachelor of Science in Information Systems (BSIS)',
+    'Bachelor of Science in Office Management (BSOM)',
+    'Bachelor of Science in Accounting Information System (BSAIS)',
+    'Bachelor of Technical Vocational Teacher Education (BTVTED)',
+    'Bachelor of Science in Customs Administration (BSCA)',
+    'Associate in Computer Technology',
+    'Diploma in Hotel and Restaurant Management Technology (DHRMT)',
+    'Hotel and Restaurant Services (Bundled) HB',
+    'Shielded Metal Arc Welding (SMAW)',
+    'Bookkeeping',
+    'Electrical Installations and Maintenance (EIM)'
+];
+
+// --- FIXED DROPDOWN VALUES AS REQUESTED (1-4 and A-J) ---
+$fixed_year_levels = ['1', '2', '3', '4'];
+$fixed_sections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+// ---
 
 $where_clauses = ["user_type = 'student'"];
 if ($status_filter) {
@@ -125,6 +163,15 @@ if ($status_filter) {
 }
 if ($search) {
     $where_clauses[] = "(full_name LIKE '%$search%' OR email LIKE '%$search%' OR student_id LIKE '%$search%')";
+}
+if ($course_filter) {
+    $where_clauses[] = "course = '$course_filter'";
+}
+if ($year_level_filter) {
+    $where_clauses[] = "year_level = '$year_level_filter'";
+}
+if ($section_filter) {
+    $where_clauses[] = "section = '$section_filter'";
 }
 
 $where_sql = 'WHERE ' . implode(' AND ', $where_clauses);
@@ -179,32 +226,65 @@ $users = mysqli_query($conn, $query);
                 </div>
             <?php endif; ?>
             
-            <!-- Filter Bar -->
             <div class="filter-bar">
-                <form method="GET" class="row g-3">
-                    <div class="col-md-5">
-                        <input type="text" class="form-control" name="search" placeholder="Search by name, email, or student ID" value="<?php echo htmlspecialchars($search); ?>">
+                <form method="GET" class="row g-3 align-items-end">
+                    <div class="col-md-2">
+                        <label class="form-label d-none d-md-block">Search</label>
+                        <input type="text" class="form-control" name="search" placeholder="Name/Email/ID" value="<?php echo htmlspecialchars($search); ?>">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
+                        <label class="form-label d-none d-md-block">Course</label>
+                        <select class="form-select" name="course_filter">
+                            <option value="">All Courses</option>
+                            <?php foreach ($all_courses as $course_option): ?>
+                                <option value="<?php echo htmlspecialchars($course_option); ?>" <?php echo $course_filter === $course_option ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($course_option); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label d-none d-md-block">Year</label>
+                        <select class="form-select" name="year_level_filter">
+                            <option value="">All Years</option>
+                            <?php foreach ($fixed_year_levels as $year_option): ?>
+                                <option value="<?php echo htmlspecialchars($year_option); ?>" <?php echo $year_level_filter === $year_option ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($year_option); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label d-none d-md-block">Section</label>
+                        <select class="form-select" name="section_filter">
+                            <option value="">All Sections</option>
+                            <?php foreach ($fixed_sections as $section_option): ?>
+                                <option value="<?php echo htmlspecialchars($section_option); ?>" <?php echo $section_filter === $section_option ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($section_option); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label d-none d-md-block">Status</label>
                         <select class="form-select" name="status">
                             <option value="active" <?php echo $status_filter === 'active' ? 'selected' : ''; ?>>Active</option>
                             <option value="archived" <?php echo $status_filter === 'archived' ? 'selected' : ''; ?>>Archived</option>
                         </select>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-1">
                         <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-search me-2"></i>Search
+                            <i class="bi bi-search"></i>
                         </button>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-1">
                         <a href="users.php" class="btn btn-outline-secondary w-100">
-                            <i class="bi bi-x-circle me-2"></i>Clear
+                            <i class="bi bi-x-circle"></i>
                         </a>
                     </div>
                 </form>
             </div>
             
-            <!-- Users Table -->
             <div class="card">
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -215,7 +295,9 @@ $users = mysqli_query($conn, $query);
                                     <th>Name</th>
                                     <th>Email</th>
                                     <th>Phone</th>
-                                    <th>College</th>
+                                    <th>Course</th>
+                                    <th>Year Level</th>
+                                    <th>Section</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
@@ -228,7 +310,9 @@ $users = mysqli_query($conn, $query);
                                             <td><?php echo htmlspecialchars($user['full_name']); ?></td>
                                             <td><?php echo htmlspecialchars($user['email']); ?></td>
                                             <td><?php echo htmlspecialchars($user['phone']); ?></td>
-                                            <td><?php echo htmlspecialchars($user['college']); ?></td>
+                                            <td><?php echo htmlspecialchars($user['course']); ?></td>
+                                            <td><?php echo htmlspecialchars($user['year_level']); ?></td>
+                                            <td><?php echo htmlspecialchars($user['section']); ?></td>
                                             <td>
                                                 <?php if ($user['status'] === 'active'): ?>
                                                     <span class="badge bg-success">Active</span>
@@ -266,7 +350,6 @@ $users = mysqli_query($conn, $query);
                                             </td>
                                         </tr>
                                         
-                                        <!-- Edit User Modal -->
                                         <div class="modal fade" id="editModal<?php echo $user['user_id']; ?>" tabindex="-1">
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
@@ -322,9 +405,22 @@ $users = mysqli_query($conn, $query);
                                                                 <label class="form-label">Year Level</label>
                                                                 <select class="form-select year-select" name="year_level" required>
                                                                     <option value="">Select Year Level</option>
-                                                                    <?php if ($user['year_level']): ?>
-                                                                        <option selected><?php echo htmlspecialchars($user['year_level']); ?></option>
-                                                                    <?php endif; ?>
+                                                                    <?php foreach ($fixed_year_levels as $year_option): ?>
+                                                                        <option value="<?php echo htmlspecialchars($year_option); ?>" <?php echo $user['year_level'] === $year_option ? 'selected' : ''; ?>>
+                                                                            <?php echo htmlspecialchars($year_option); ?>
+                                                                        </option>
+                                                                    <?php endforeach; ?>
+                                                                </select>
+                                                            </div>
+                                                            <div class="mb-3">
+                                                                <label class="form-label">Section</label>
+                                                                <select class="form-select" name="section">
+                                                                    <option value="">Select Section</option>
+                                                                    <?php foreach ($fixed_sections as $section_option): ?>
+                                                                        <option value="<?php echo htmlspecialchars($section_option); ?>" <?php echo $user['section'] === $section_option ? 'selected' : ''; ?>>
+                                                                            <?php echo htmlspecialchars($section_option); ?>
+                                                                        </option>
+                                                                    <?php endforeach; ?>
                                                                 </select>
                                                             </div>
                                                         </div>
@@ -339,7 +435,7 @@ $users = mysqli_query($conn, $query);
                                     <?php endwhile; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="7">
+                                        <td colspan="9">
                                             <div class="empty-state">
                                                 <i class="bi bi-people"></i>
                                                 <h5>No Students Found</h5>
@@ -356,7 +452,6 @@ $users = mysqli_query($conn, $query);
         </div>
     </div>
     
-    <!-- Add User Modal -->
     <div class="modal fade" id="addUserModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -411,6 +506,22 @@ $users = mysqli_query($conn, $query);
                             <label class="form-label">Year Level</label>
                             <select class="form-select year-select" name="year_level" required>
                                 <option value="">Select Year Level</option>
+                                <?php foreach ($fixed_year_levels as $year_option): ?>
+                                    <option value="<?php echo htmlspecialchars($year_option); ?>">
+                                        <?php echo htmlspecialchars($year_option); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Section</label>
+                            <select class="form-select" name="section">
+                                <option value="">Select Section</option>
+                                <?php foreach ($fixed_sections as $section_option): ?>
+                                    <option value="<?php echo htmlspecialchars($section_option); ?>">
+                                        <?php echo htmlspecialchars($section_option); ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="alert alert-info">
@@ -427,7 +538,6 @@ $users = mysqli_query($conn, $query);
         </div>
     </div>
     
-    <!-- Bulk Upload Modal -->
     <div class="modal fade" id="bulkUploadModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -440,21 +550,29 @@ $users = mysqli_query($conn, $query);
                         <div class="mb-3">
                             <label class="form-label">Upload CSV File *</label>
                             <input type="file" class="form-control" name="csv_file" accept=".csv" required>
+                            <div class="mt-2">
+                                <a href="../assets/templates/students_template.csv" class="btn btn-outline-primary btn-sm" download>
+                                    <i class="bi bi-download me-1"></i>Download CSV template
+                                </a>
+                            </div>
                         </div>
                         <div class="alert alert-warning">
                             <h6><i class="bi bi-exclamation-triangle me-2"></i>CSV Format Instructions:</h6>
                             <p class="mb-2">Your CSV file must have the following columns (in order):</p>
                             <ol class="mb-2">
-                                <li>Email</li>
-                                <li>Full Name</li>
-                                <li>Phone</li>
                                 <li>Student ID</li>
+                                <li>Full Name</li>
+                                <li>Email</li>
+                                <li>Phone</li>
+                                <li>Course</li>
+                                <li>Year Level</li>
+                                <li>Section</li>
                             </ol>
                             <p class="mb-0"><strong>Example:</strong></p>
                             <code style="display: block; background: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 5px;">
-                                email,full_name,phone,student_id<br>
-                                juan@email.com,Juan Dela Cruz,09123456789,2024-001<br>
-                                maria@email.com,Maria Santos,09234567890,2024-002
+                                student_id,full_name,email,phone,course,year_level,section<br>
+                                2024-001,Juan Dela Cruz,juan@email.com,09123456789,"Bachelor of Science in Information Systems (BSIS)",1,A<br>
+                                2024-002,Maria Santos,maria@email.com,09234567890,"Bachelor of Science in Office Management (BSOM)",2,B
                             </code>
                         </div>
                         <div class="alert alert-info">

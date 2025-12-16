@@ -1,7 +1,6 @@
 <?php
 session_start();
 
-// index.php
 require_once 'database.php';
 
 // Redirect if already logged in

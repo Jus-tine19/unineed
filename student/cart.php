@@ -1,5 +1,5 @@
 <?php
-// student/cart.php
+
 require_once '../config/database.php';
 requireStudent();
 
@@ -164,10 +164,7 @@ $total = $subtotal; // No tax or shipping for now
                                     <span>Subtotal (<?php echo $total_items; ?> items)</span>
                                     <span><?php echo formatCurrency($subtotal); ?></span>
                                 </div>
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span>Shipping</span>
-                                    <span class="text-success">FREE</span>
-                                </div>
+                                
                                 <hr>
                                 <div class="d-flex justify-content-between mb-3">
                                     <strong>Total</strong>

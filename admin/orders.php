@@ -1,5 +1,5 @@
 <?php
-// admin/orders.php
+
 require_once '../config/database.php';
 requireAdmin();
 
@@ -7,21 +7,62 @@ requireAdmin();
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $order_id = clean($_POST['order_id']);
     $status = clean($_POST['status']);
-    
-    $query = "UPDATE orders SET order_status = '$status' WHERE order_id = $order_id";
-    if (mysqli_query($conn, $query)) {
+
+    // Start transaction so status change and any stock restores are atomic
+    mysqli_begin_transaction($conn);
+    try {
+        // Fetch current status to avoid double-restoring stock
+        $cur_q = "SELECT order_status, user_id FROM orders WHERE order_id = $order_id FOR UPDATE";
+        $cur_res = mysqli_query($conn, $cur_q);
+        $cur_row = $cur_res ? mysqli_fetch_assoc($cur_res) : null;
+        $previous_status = $cur_row ? $cur_row['order_status'] : null;
+        $order_user_id = $cur_row ? $cur_row['user_id'] : null;
+
+        // Update status
+        $query = "UPDATE orders SET order_status = '$status' WHERE order_id = $order_id";
+        if (!mysqli_query($conn, $query)) {
+            throw new Exception('Failed to update order status: ' . mysqli_error($conn));
+        }
+
+        // If status changed to cancelled and previous status wasn't cancelled, restore stock
+        if ($status === 'cancelled' && $previous_status !== 'cancelled') {
+            $items_query = "SELECT oi.*, oi.quantity as qty, oi.product_id, oi.variant_id 
+                            FROM order_items oi 
+                            WHERE oi.order_id = $order_id";
+            $items_res = mysqli_query($conn, $items_query);
+            if ($items_res) {
+                while ($it = mysqli_fetch_assoc($items_res)) {
+                    $qty = intval($it['qty']);
+                    $p_id = intval($it['product_id']);
+                    $v_id = isset($it['variant_id']) ? intval($it['variant_id']) : null;
+                    
+                    // Restore base product stock
+                    $upd = "UPDATE products SET stock_quantity = stock_quantity + $qty WHERE product_id = $p_id";
+                    mysqli_query($conn, $upd);
+                    
+                    // Restore variant stock (if applicable)
+                    if ($v_id) {
+                        $var_upd = "UPDATE product_variants SET stock_quantity = stock_quantity + $qty WHERE variant_id = $v_id";
+                        mysqli_query($conn, $var_upd);
+                    }
+                }
+            }
+        }
+
         // Create notification for student
         $order_query = "SELECT user_id FROM orders WHERE order_id = $order_id";
         $order_result = mysqli_query($conn, $order_query);
         $order_data = mysqli_fetch_assoc($order_result);
-        
+
         $message = "Your order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " has been updated to: " . ucfirst($status);
         $notif_query = "INSERT INTO notifications (user_id, message, type) VALUES ({$order_data['user_id']}, '$message', 'order_update')";
         mysqli_query($conn, $notif_query);
-        
+
+        mysqli_commit($conn);
         $success = "Order status updated successfully!";
-    } else {
-        $error = "Failed to update order status.";
+    } catch (Exception $e) {
+        mysqli_rollback($conn);
+        $error = "Failed to update order status: " . $e->getMessage();
     }
 }
 
@@ -274,10 +315,23 @@ $orders = mysqli_query($conn, $query);
                                                                 <label class="form-label">New Status</label>
                                                                 <select class="form-select" name="status" required>
                                                                     <option value="">Select Status</option>
-                                                                    <option value="pending">Pending</option>
-                                                                    <option value="ready for pickup">Ready for Pickup</option>
-                                                                    <option value="completed">Completed</option>
-                                                                    <option value="cancelled">Cancelled</option>
+                                                                    <?php
+                                                                    // Only show statuses that are different from the current one
+                                                                    $statusOptions = [
+                                                                        'pending' => 'Pending',
+                                                                        'ready for pickup' => 'Ready for Pickup',
+                                                                        'completed' => 'Completed',
+                                                                        'cancelled' => 'Cancelled'
+                                                                    ];
+                                                                    foreach ($statusOptions as $sKey => $sLabel) {
+                                                                        // Always skip the current status
+                                                                        if ($sKey === $order['order_status']) continue;
+                                                                        // Business rule: when current status is 'ready for pickup', do not allow
+                                                                        // changing back to 'pending' (hide 'pending' option)
+                                                                        if ($order['order_status'] === 'ready for pickup' && $sKey === 'pending') continue;
+                                                                    ?>
+                                                                        <option value="<?php echo htmlspecialchars($sKey); ?>"><?php echo htmlspecialchars($sLabel); ?></option>
+                                                                    <?php } ?>
                                                                 </select>
                                                             </div>
                                                         </div>

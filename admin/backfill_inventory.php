@@ -1,5 +1,5 @@
 <?php
-// admin/backfill_inventory.php
+
 // Backfill inventory_movements table from current product and variant stock
 require_once __DIR__ . '/../config/database.php';
 requireAdmin();
@@ -16,7 +16,7 @@ if (!$table_check || mysqli_num_rows($table_check) === 0) {
     }
 }
 
-// Fetch products with variant info
+// Get products with variant info
 $products_q = "SELECT p.*, COALESCE(SUM(v.stock_quantity),0) as total_variant_stock, COUNT(v.variant_id) as variant_count 
                FROM products p 
                LEFT JOIN product_variants v ON p.product_id = v.product_id 

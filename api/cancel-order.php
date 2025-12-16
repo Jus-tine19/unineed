@@ -1,19 +1,19 @@
 <?php
+// Cancel Order API - Restore Stock
 require_once '../config/database.php';
 requireStudent();
 
 header('Content-Type: application/json');
 
 $user_id = $_SESSION['user_id'];
-$is_admin = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'admin';
 
-// Expect POST
+// Validate POST request
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Invalid request method']);
     exit();
 }
 
-// Support JSON body as well as form-data
+// Extract order_id from form or JSON
 $rawInput = file_get_contents('php://input');
 $jsonInput = json_decode($rawInput, true);
 $order_id = 0;
@@ -29,7 +29,7 @@ if (!$order_id) {
     exit();
 }
 
-// Get order details
+// Verify order exists, is pending, & belongs to user
 $order_query = "SELECT o.*, u.user_id 
                 FROM orders o 
                 JOIN users u ON o.user_id = u.user_id 
@@ -56,9 +56,7 @@ if (mysqli_num_rows($result) === 0) {
 
 $order = mysqli_fetch_assoc($result);
 
-// Already verified: order exists, belongs to user, and is pending
-
-// Start transaction
+// Begin atomic transaction
 $conn->begin_transaction();
 try {
     // Update order status to cancelled
@@ -73,7 +71,7 @@ try {
         throw new Exception('Failed to update order status: ' . mysqli_stmt_error($stmt));
     }
 
-    // Get order items with product details
+    // Fetch order items & restore stock
     $items_query = "SELECT oi.*, p.product_id, p.stock_quantity 
                     FROM order_items oi 
                     JOIN products p ON oi.product_id = p.product_id 
@@ -91,29 +89,45 @@ try {
     
     $items = mysqli_stmt_get_result($stmt);
     
-    // Restore stock for each item
+    // Process each item & restore stock
     while ($item = mysqli_fetch_assoc($items)) {
-        $update_stock = "UPDATE products 
-                        SET stock_quantity = stock_quantity + ? 
-                        WHERE product_id = ?";
+        $qty = intval($item['quantity']);
+        $product_id = intval($item['product_id']);
+        $variant_id = isset($item['variant_id']) ? intval($item['variant_id']) : null;
         
+        // Restore base product stock
+        $update_stock = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE product_id = ?";
         $stmt = mysqli_prepare($conn, $update_stock);
         if (!$stmt) {
             throw new Exception('Failed to prepare stock update: ' . mysqli_error($conn));
         }
         
-        mysqli_stmt_bind_param($stmt, "ii", $item['quantity'], $item['product_id']);
+        mysqli_stmt_bind_param($stmt, "ii", $qty, $product_id);
         if (!mysqli_stmt_execute($stmt)) {
-            throw new Exception('Failed to restore stock for product ' . $item['product_id'] . ': ' . mysqli_stmt_error($stmt));
+            throw new Exception('Failed to restore stock for product ' . $product_id . ': ' . mysqli_stmt_error($stmt));
+        }
+        
+        // Restore variant stock (if applicable)
+        if ($variant_id) {
+            $variant_stock = "UPDATE product_variants SET stock_quantity = stock_quantity + ? WHERE variant_id = ?";
+            $stmt = mysqli_prepare($conn, $variant_stock);
+            if (!$stmt) {
+                throw new Exception('Failed to prepare variant stock update: ' . mysqli_error($conn));
+            }
+            
+            mysqli_stmt_bind_param($stmt, "ii", $qty, $variant_id);
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception('Failed to restore stock for variant ' . $variant_id . ': ' . mysqli_stmt_error($stmt));
+            }
         }
     }
 
-    // Create different messages for admin and user
-    $adminMsg = "Order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " has been cancelled by the customer.";
-    $userMsg = "Order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " has been cancelled by you.";
-    $adminId = 1; // default admin
+    // Send cancellation notifications
+    $adminMsg = "Order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " cancelled by customer.";
+    $userMsg = "Order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " cancelled.";
+    $adminId = 1;
     
-    // Insert notification for admin
+    // Notify admin
     $stmt = mysqli_prepare($conn, "INSERT INTO notifications (user_id, message, type, is_read) VALUES (?, ?, 'order', 0)");
     if (!$stmt) {
         throw new Exception('Failed to prepare admin notification: ' . mysqli_error($conn));

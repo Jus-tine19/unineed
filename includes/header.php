@@ -23,7 +23,7 @@ $user_type = $_SESSION['user_type'];
     <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <!-- Custom CSS -->
-    <link href="/unineeds/assets/css/style.css" rel="stylesheet">
+    <link href="/.../assets/css/style.css" rel="stylesheet">
 </head>
 <body>
     <!-- Navigation Bar -->
@@ -37,13 +37,13 @@ $user_type = $_SESSION['user_type'];
                 <ul class="navbar-nav ms-auto">
                     <?php if ($user_type === 'student'): ?>
                     <li class="nav-item">
-                        <a class="nav-link" href="/unineeds/student/cart.php">
+                        <a class="nav-link" href="/.../student/cart.php">
                             <i class="bi bi-cart"></i>
                             <span id="cart-count" class="badge bg-danger">0</span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/unineeds/student/notifications.php">
+                        <a class="nav-link" href="/.../student/notifications.php">
                             <i class="bi bi-bell"></i>
                             <span id="notification-count" class="badge bg-danger">0</span>
                         </a>
@@ -56,7 +56,7 @@ $user_type = $_SESSION['user_type'];
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="<?php echo "/{$user_type}/settings.php"; ?>">Settings</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/unineeds/api/logout.php">Logout</a></li>
+                            <li><a class="dropdown-item" href="/.../api/logout.php">Logout</a></li>
                         </ul>
                     </li>
                 </ul>

@@ -1,5 +1,5 @@
 <?php
-// student/orders.php
+
 require_once '../config/database.php';
 requireStudent();
 

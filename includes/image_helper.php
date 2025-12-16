@@ -30,7 +30,7 @@ function uploadProductImage($file) {
     }
     
     if (move_uploaded_file($file["tmp_name"], $target_file)) {
-        return [true, "/unineeds/assets/uploads/products/" . $new_filename];
+        return [true, "/assets/uploads/products/" . $new_filename];
     }
     
     return [false, "Failed to upload file."];

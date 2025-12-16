@@ -1,5 +1,5 @@
 <?php
-// student/dashboard.php
+
 require_once '../config/database.php';
 requireStudent();
 

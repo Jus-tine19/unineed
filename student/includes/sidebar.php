@@ -1,5 +1,4 @@
 <?php
-// student/includes/sidebar.php - updated to match admin layout and support logo
 $current_page = basename($_SERVER['PHP_SELF'], '.php');
 
 // Safe check for notifications table

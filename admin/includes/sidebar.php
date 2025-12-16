@@ -6,7 +6,7 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
             <div class="sidebar-top d-flex align-items-center justify-content-between">
                 <div class="brand d-flex align-items-center gap-2">
                     <?php
-                    // prefer a project logo if present, fallback to avatar+text
+                    
                     $logoFile = __DIR__ . '/../../assets/images/logo.png';
                     if (file_exists($logoFile)):
                     ?>
@@ -68,6 +68,25 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
                     </a>
                 </li>
 
+                <!-- Finance Section -->
+                <li class="nav-item">
+                    <div class="nav-section-header">
+                        <span class="text-muted small text-uppercase px-3 mt-4 mb-2 d-block">Finance</span>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link <?php echo $current_page === 'cogs' ? 'active' : ''; ?>" href="cogs.php">
+                        <i class="bi bi-calculator"></i>
+                        <span class="label">Cost of Goods Sold</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link <?php echo $current_page === 'expenses' ? 'active' : ''; ?>" href="expenses.php">
+                        <i class="bi bi-wallet2"></i>
+                        <span class="label">Expenses</span>
+                    </a>
+                </li>
+
                 <!-- Reports & Settings -->
                 <li class="nav-item">
                     <div class="nav-section-header">
@@ -119,7 +138,7 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
 </nav>
 
 <style>
-/* Add some spacing and styling for the section headers */
+/* spacing and styling for the  headers */
 .nav-section-header {
     opacity: 0.8;
 }
@@ -127,7 +146,7 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
     font-weight: 600;
     letter-spacing: 0.5px;
 }
-/* Indent items under sections slightly */
+/* Indent items */
 .nav-section-header + .nav-item .nav-link {
     padding-left: 1.5rem;
 }

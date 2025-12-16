@@ -1,5 +1,5 @@
 <?php
-// admin/expenses.php
+
 require_once '../config/database.php';
 requireAdmin();
 
@@ -10,7 +10,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
     $description = clean($_POST['description']);
     $expense_date = clean($_POST['expense_date']);
     $vendor = clean($_POST['vendor']);
-    $reference_number = clean($_POST['reference_number']);
+    // Use null coalescing to safely handle 'reference_number' in case the field was hidden
+    $reference_number = clean($_POST['reference_number'] ?? ''); 
     
     // Handle file upload
     $receipt_path = null;
@@ -34,6 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
     }
     
     $receipt_sql = $receipt_path ? "'" . mysqli_real_escape_string($conn, $receipt_path) . "'" : "NULL";
+    // Ensure reference_number is set to NULL if it's empty, otherwise use the value.
+    $ref_sql = empty($reference_number) ? "NULL" : "'" . mysqli_real_escape_string($conn, $reference_number) . "'";
     
     $query = "INSERT INTO expenses 
               (expense_type, amount, description, expense_date, vendor, reference_number, receipt_path, created_by) 
@@ -42,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
                       '" . mysqli_real_escape_string($conn, $description) . "',
                       '$expense_date',
                       '" . mysqli_real_escape_string($conn, $vendor) . "',
-                      '" . mysqli_real_escape_string($conn, $reference_number) . "',
+                      $ref_sql,
                       $receipt_sql,
                       {$_SESSION['user_id']})";
     
@@ -176,7 +179,6 @@ $expense_types = [
                 </div>
             <?php endif; ?>
             
-            <!-- Summary Cards -->
             <div class="row g-4 mb-4">
                 <div class="col-md-3">
                     <div class="stat-card stat-danger">
@@ -227,7 +229,6 @@ $expense_types = [
                 </div>
             </div>
             
-            <!-- Expense Breakdown Chart -->
             <div class="card mb-4">
                 <div class="card-header">
                     <h5 class="mb-0"><i class="bi bi-pie-chart me-2"></i>Expense Breakdown by Type</h5>
@@ -253,7 +254,6 @@ $expense_types = [
                 </div>
             </div>
             
-            <!-- Filters -->
             <div class="card mb-4">
                 <div class="card-body">
                     <form method="GET" class="row g-3">
@@ -285,7 +285,6 @@ $expense_types = [
                 </div>
             </div>
             
-            <!-- Expenses Table -->
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">Expense Entries</h5>
@@ -318,7 +317,7 @@ $expense_types = [
                                             <td><?php echo htmlspecialchars($expense['description']); ?></td>
                                             <td><strong><?php echo formatCurrency($expense['amount']); ?></strong></td>
                                             <td><?php echo htmlspecialchars($expense['vendor']); ?></td>
-                                            <td><?php echo htmlspecialchars($expense['reference_number']); ?></td>
+                                            <td><?php echo htmlspecialchars($expense['reference_number'] ?? 'N/A'); ?></td>
                                             <td>
                                                 <?php if ($expense['receipt_path']): ?>
                                                     <a href="../<?php echo htmlspecialchars($expense['receipt_path']); ?>" target="_blank" class="btn btn-sm btn-outline-primary">
@@ -351,7 +350,6 @@ $expense_types = [
         </div>
     </div>
     
-    <!-- Add Expense Modal -->
     <div class="modal fade" id="addExpenseModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -369,7 +367,7 @@ $expense_types = [
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Expense Type *</label>
-                                <select class="form-select" name="expense_type" required>
+                                <select class="form-select" name="expense_type" required id="expenseType" onchange="toggleReferenceNumber()">
                                     <option value="">Select Type</option>
                                     <?php foreach ($expense_types as $key => $label): ?>
                                         <option value="<?php echo $key; ?>"><?php echo $label; ?></option>
@@ -395,9 +393,9 @@ $expense_types = [
                                 <input type="text" class="form-control" name="vendor" required placeholder="e.g., Shell Gas Station, PLDT">
                             </div>
                             
-                            <div class="col-md-6">
+                            <div class="col-md-6" id="referenceNumberContainer">
                                 <label class="form-label">Reference Number</label>
-                                <input type="text" class="form-control" name="reference_number" placeholder="e.g., Receipt #, OR #">
+                                <input type="text" class="form-control" name="reference_number" id="referenceNumberInput" placeholder="e.g., Receipt #, OR #">
                             </div>
                             
                             <div class="col-md-6">
@@ -425,5 +423,42 @@ $expense_types = [
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../assets/js/script.js"></script>
+    <script>
+        /**
+         * Toggles the visibility of the Reference Number field
+         * based on the selected Expense Type.
+         */
+        function toggleReferenceNumber() {
+            const expenseType = document.getElementById('expenseType').value;
+            const refContainer = document.getElementById('referenceNumberContainer');
+            const refInput = document.getElementById('referenceNumberInput');
+            
+            // Expense types that DO NOT need a Reference Number (Receipt/OR#)
+            const nonRequiredTypes = ['transportation', 'other'];
+
+            if (refContainer && refInput) {
+                if (nonRequiredTypes.includes(expenseType)) {
+                    // Hide the container
+                    refContainer.style.display = 'none';
+                    // Clear value to ensure no data is submitted for a hidden field
+                    refInput.value = ''; 
+                } else {
+                    // Show the container for all other types
+                    refContainer.style.display = 'block';
+                }
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            // Run the function when the modal is fully shown to correctly set the state
+            const addExpenseModal = document.getElementById('addExpenseModal');
+            if (addExpenseModal) {
+                 addExpenseModal.addEventListener('shown.bs.modal', toggleReferenceNumber);
+            }
+            
+            // Run on initial load in case the modal is pre-filled
+            toggleReferenceNumber(); 
+        });
+    </script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 <?php
-// api/get-product-variants.php
+
 require_once __DIR__ . '/../config/database.php';
 
 header('Content-Type: application/json; charset=utf-8');

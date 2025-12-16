@@ -7,6 +7,8 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <!-- Custom JS -->
     <script src="/unineeds/assets/js/script.js"></script>
+    <!-- Mobile Menu JS -->
+    <script src="/unineeds/assets/js/mobile-menu.js"></script>
 
     <?php if (isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'student'): ?>
     <script>

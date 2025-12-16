@@ -1,5 +1,5 @@
 <?php
-// student/products.php
+
 require_once '../config/database.php';
 requireStudent();
 
@@ -214,16 +214,20 @@ $categories = mysqli_query($conn, $categories_query);
                                 ?>
                                 <?php if ($imgSrc): ?>
                                     <?php
-                                        // Normalize image path
+                                        // Normalize image path for absolute URL
                                         $imgSrcNorm = $imgSrc;
-                                        if (!preg_match('/^(https?:)?\\/\\//i', $imgSrcNorm) && strpos($imgSrcNorm, '/') !== 0) {
-                                            $imgSrcNorm = '../' . ltrim($imgSrcNorm, '/');
+                                        // If it's a relative path, make it absolute from root
+                                        if (!preg_match('/^(https?:)?\\/\\//i', $imgSrcNorm)) {
+                                            // Remove leading ../ or /
+                                            $imgSrcNorm = ltrim($imgSrcNorm, '/.');
+                                            // Build absolute path from domain root
+                                            $imgSrcNorm = '/' . $imgSrcNorm;
                                         }
                                     ?>
                                     <img src="<?php echo htmlspecialchars($imgSrcNorm); ?>" 
                                          alt="<?php echo htmlspecialchars($product['product_name']); ?>" 
                                          class="product-image"
-                                         onerror="this.onerror=null; this.src='../assets/img/product-placeholder.jpg';">
+                                         onerror="this.onerror=null; this.src='/assets/images/product-placeholder.jpg';">
                                 <?php else: ?>
                                     <div class="product-image d-flex align-items-center justify-content-center">
                                         <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
@@ -297,8 +301,11 @@ $categories = mysqli_query($conn, $categories_query);
                                                         <?php if ($modalImg): ?>
                                                             <?php
                                                                 $modalImgNorm = $modalImg;
-                                                                if (!preg_match('/^(https?:)?\\/\\//i', $modalImgNorm) && strpos($modalImgNorm, '/') !== 0) {
-                                                                    $modalImgNorm = '/unineeds/' . ltrim($modalImgNorm, '/');
+                                                                if (!preg_match('/^(https?:)?\\/\\//i', $modalImgNorm)) {
+                                                                    // Remove leading ../ or /
+                                                                    $modalImgNorm = ltrim($modalImgNorm, '/.');
+                                                                    // Build absolute path from domain root
+                                                                    $modalImgNorm = '/' . $modalImgNorm;
                                                                 }
                                                             ?>
                                                             <img src="<?php echo htmlspecialchars($modalImgNorm); ?>" alt="<?php echo htmlspecialchars($product['product_name']); ?>" style="max-width: 220px; border-radius: 10px; border:1px solid #e9ecef; padding:8px;">

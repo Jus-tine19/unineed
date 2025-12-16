@@ -1,9 +1,9 @@
 <?php
-// student/checkout.php
+// Checkout - Place Order & Deduct Stock
 require_once '../config/database.php';
 requireStudent();
 
-// Check if cart is empty
+// Redirect if cart empty
 if (!isset($_SESSION['cart']) || empty($_SESSION['cart'])) {
     header('Location: cart.php');
     exit();
@@ -11,19 +11,19 @@ if (!isset($_SESSION['cart']) || empty($_SESSION['cart'])) {
 
 $user_id = $_SESSION['user_id'];
 
-// Handle Place Order
+// Process order submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
-    // Calculate total
+    // Sum cart total
     $total_amount = 0;
     foreach ($_SESSION['cart'] as $item) {
         $total_amount += $item['price'] * $item['quantity'];
     }
     
-    // Start transaction
+    // Begin atomic transaction
     mysqli_begin_transaction($conn);
     
     try {
-        // Create order
+        // Create order record
         $query = "INSERT INTO orders (user_id, total_amount, payment_method, order_status) 
                  VALUES ($user_id, $total_amount, 'cash', 'pending')";
         
@@ -33,30 +33,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         
         $order_id = mysqli_insert_id($conn);
         
-        // Insert order items and update stock
+        // Process each cart item
         foreach ($_SESSION['cart'] as $item) {
-            $product_id = $item['product_id'];
-            $quantity = $item['quantity'];
-            $price = $item['price'];
-            
-            // Insert order item
-            $query = "INSERT INTO order_items (order_id, product_id, quantity, price) 
-                     VALUES ($order_id, $product_id, $quantity, $price)";
-            
-            if (!mysqli_query($conn, $query)) {
-                throw new Exception("Failed to insert order item");
+            $product_id = intval($item['product_id']);
+            $quantity = intval($item['quantity']);
+            $price = floatval($item['price']);
+            $variants = isset($item['variants']) ? $item['variants'] : [];
+
+            // Find variant_id if product has variants
+            $variant_id = null;
+            $variant_value_stored = null;
+            if (!empty($variants)) {
+                $variant_where = "product_id = $product_id";
+                foreach ($variants as $v_type => $v_val) {
+                    $variant_value_stored = $v_val;
+                    $v_type_esc = mysqli_real_escape_string($conn, $v_type);
+                    $v_val_esc = mysqli_real_escape_string($conn, $v_val);
+                    $variant_where .= " AND variant_type = '$v_type_esc' AND variant_value = '$v_val_esc'";
+                }
+                $variant_query = "SELECT variant_id FROM product_variants WHERE $variant_where LIMIT 1";
+                $var_result = mysqli_query($conn, $variant_query);
+                if ($var_result && $var_row = mysqli_fetch_assoc($var_result)) {
+                    $variant_id = intval($var_row['variant_id']);
+                }
             }
+
+            // Insert order item with variant info
+            $variant_id_str = $variant_id !== null ? $variant_id : 'NULL';
+            $variant_value_str = $variant_value_stored !== null ? "'" . mysqli_real_escape_string($conn, $variant_value_stored) . "'" : 'NULL';
             
-            // Update product stock
-            $query = "UPDATE products SET stock_quantity = stock_quantity - $quantity 
-                     WHERE product_id = $product_id";
+            $query = "INSERT INTO order_items (order_id, product_id, quantity, price, variant_id, variant_value) 
+                     VALUES ($order_id, $product_id, $quantity, $price, $variant_id_str, $variant_value_str)";
             
             if (!mysqli_query($conn, $query)) {
-                throw new Exception("Failed to update stock");
+                throw new Exception("Failed to insert order item: " . mysqli_error($conn));
+            }
+
+            // Decrement product base stock
+            $upd = "UPDATE products SET stock_quantity = stock_quantity - $quantity WHERE product_id = $product_id";
+            $res = mysqli_query($conn, $upd);
+            if (!$res) {
+                throw new Exception("Failed to update product stock: " . mysqli_error($conn));
+            }
+
+            // Decrement variant stock (if applicable)
+            if (!empty($variants)) {
+                foreach ($variants as $variant_type => $variant_value) {
+                    $variant_type = mysqli_real_escape_string($conn, $variant_type);
+                    $variant_value = mysqli_real_escape_string($conn, $variant_value);
+                    
+                    $var_upd = "UPDATE product_variants SET stock_quantity = stock_quantity - $quantity 
+                               WHERE product_id = $product_id AND variant_type = '$variant_type' AND variant_value = '$variant_value'";
+                    
+                    $var_res = mysqli_query($conn, $var_upd);
+                    if (!$var_res) {
+                        throw new Exception("Failed to update variant stock: " . mysqli_error($conn));
+                    }
+                }
             }
         }
         
-        // Create invoice
+        // Create invoice record
         $invoice_number = 'INV-' . date('Ymd') . '-' . str_pad($order_id, 6, '0', STR_PAD_LEFT);
         $query = "INSERT INTO invoices (order_id, invoice_number, payment_status) 
                  VALUES ($order_id, '$invoice_number', 'unpaid')";
@@ -65,19 +102,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             throw new Exception("Failed to create invoice");
         }
         
-        // Create notification for admin
+        // Notify admin of new order
         $message = "New order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " from " . $_SESSION['full_name'];
         $query = "INSERT INTO notifications (user_id, message, type) 
                  SELECT user_id, '$message', 'new_order' FROM users WHERE user_type = 'admin'";
         mysqli_query($conn, $query);
         
-        // Commit transaction
+        // Commit all changes
         mysqli_commit($conn);
         
-        // Clear cart
+        // Clear cart & redirect
         $_SESSION['cart'] = [];
-        
-        // Redirect to order confirmation
         header('Location: orders.php?success=1&order_id=' . $order_id);
         exit();
         
