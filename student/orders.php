@@ -1,5 +1,3 @@
-// unineed/student/orders.php - Full Content
-
 <?php
 
 require_once '../config/database.php';
@@ -210,13 +208,14 @@ if (isset($_GET['id'])) {
                     <div class="col-md-4">
                         
                         <?php 
-                        $is_gcash_order = $order_details['payment_method'] === 'gcash';
+                        $is_pending_gcash = $order_details['order_status'] === 'pending_payment' && $order_details['payment_method'] === 'gcash';
                         $is_proof_uploaded = $order_details['payment_proof_path'] && $order_details['payment_status'] === 'pending_proof';
                         
-                        if ($is_gcash_order && !in_array($order_details['order_status'], ['completed', 'cancelled'])):
-                            
-                            $gcash_name = GCASH_NAME;
-                            $gcash_number = GCASH_NUMBER;
+                        // Use constants GCASH_NAME and GCASH_NUMBER from database.php
+                        $gcash_name = GCASH_NAME;
+                        $gcash_number = GCASH_NUMBER;
+                        
+                        if ($is_pending_gcash || $payment_needed_gcash): 
                             $amount_due = formatCurrency($order_details['down_payment_due'] ?? $order_details['total_amount']);
                             $full_amount = formatCurrency($order_details['total_amount']);
                         ?>
@@ -225,15 +224,14 @@ if (isset($_GET['id'])) {
                                     <h6 class="mb-0"><i class="bi bi-wallet me-2"></i>Payment Required: GCash</h6>
                                 </div>
                                 <div class="card-body">
-                                    
                                     <?php if ($is_proof_uploaded): ?>
                                         <div class="alert alert-warning">
                                             <i class="bi bi-hourglass-split me-2"></i>
                                             <strong>Proof Uploaded!</strong> Awaiting Admin verification.
                                             <a href="../<?php echo htmlspecialchars($order_details['payment_proof_path']); ?>" target="_blank" class="alert-link d-block mt-1">View Receipt Proof</a>
                                         </div>
-                                    <?php elseif ($order_details['order_status'] === 'pending_payment'): // Only show form if still in initial pending_payment status ?>
-                                        <p class="mb-2">Your order is placed, but requires payment confirmation before processing. **Please pay now.**</p>
+                                    <?php else: ?>
+                                        <p class="mb-2">Your order is placed, but requires payment confirmation before processing.</p>
                                         <h5 class="text-success">Amount Due Now (Min. 20%): <strong class="fs-4"><?php echo $amount_due; ?></strong></h5>
                                         <p class="small text-muted mb-3">Total Amount: <?php echo $full_amount; ?>. Remaining balance (if any) will be due on claim.</p>
 
@@ -258,11 +256,6 @@ if (isset($_GET['id'])) {
                                                 <i class="bi bi-upload me-2"></i>Submit Proof
                                             </button>
                                         </form>
-                                    <?php else: ?>
-                                        <div class="alert alert-info">
-                                            <i class="bi bi-check-circle me-2"></i>
-                                            <strong>Payment Confirmed.</strong> Your order is now being processed.
-                                        </div>
                                     <?php endif; ?>
                                 </div>
                             </div>

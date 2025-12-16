@@ -28,7 +28,6 @@ $result = mysqli_query($conn, $query);
 $stats['total_products'] = mysqli_fetch_assoc($result)['total'];
 
 // Low Stock Products
-// Assuming 10 is the low stock threshold
 $query = "SELECT COUNT(*) as low_stock FROM products WHERE stock_quantity <= 10 AND stock_quantity > 0 AND status = 'available'";
 $result = mysqli_query($conn, $query);
 $stats['low_stock'] = mysqli_fetch_assoc($result)['low_stock'];
@@ -173,7 +172,6 @@ $monthly_sales = mysqli_query($conn, $query);
                                                             'cancelled' => 'danger'
                                                         ];
                                                         $order_status_clean = str_replace('_', ' ', $order['order_status']);
-                                                        // FIX: Use null-coalescing operator to handle undefined index gracefully
                                                         $current_badge_class = $badge_class[$order['order_status']] ?? 'secondary';
                                                         ?>
                                                         <span class="badge bg-<?php echo $current_badge_class; ?>">

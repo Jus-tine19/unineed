@@ -1,5 +1,7 @@
 <?php
 require_once '../config/database.php';
+// Assuming image_helper.php is included if you use functions from it, otherwise we use built-in PHP functions
+// require_once '../includes/image_helper.php';
 requireStudent();
 
 header('Content-Type: application/json');
@@ -9,14 +11,14 @@ $response = ['success' => false, 'message' => ''];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
     $order_id = intval(clean($_POST['order_id']));
     $user_id = $_SESSION['user_id'];
-    
+
     // 1. Basic Validation
     if ($order_id <= 0) {
         $response['message'] = 'Invalid Order ID.';
         echo json_encode($response);
         exit();
     }
-    
+
     // Check if a file was uploaded
     if (empty($_FILES['receipt_image']['name'])) {
         $response['message'] = 'Please upload a receipt image.';
@@ -37,8 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
         echo json_encode($response);
         exit();
     }
-    
-    // Only allow upload if status is 'pending_payment' AND payment method is 'gcash'
+
     if ($order_data['order_status'] !== 'pending_payment' || $order_data['payment_method'] !== 'gcash') {
         $response['message'] = 'Receipt upload is not allowed for this order status/method.';
         echo json_encode($response);
@@ -50,11 +51,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
     if (!file_exists($uploadDir)) {
         mkdir($uploadDir, 0777, true);
     }
-    
+
+    // Simple upload logic
     $fileName = basename($_FILES['receipt_image']['name']);
     $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
     $allowedExts = ['jpg', 'jpeg', 'png'];
-    
+
     if (!in_array($fileExt, $allowedExts)) {
         $response['message'] = 'Invalid file type. Only JPG and PNG allowed.';
         echo json_encode($response);
@@ -66,16 +68,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
     $dbPath = 'assets/uploads/gcash_receipts/' . $newFileName; // Path relative to /unineed
 
     if (move_uploaded_file($_FILES['receipt_image']['tmp_name'], $uploadPath)) {
-        
+
         // 4. Update Database
         mysqli_begin_transaction($conn);
         try {
             // Update the invoice record to store the proof path and flag for admin review
             $update_q = "UPDATE invoices 
                          SET payment_proof_path = '$dbPath', 
-                             payment_status = 'pending_proof' 
+                             payment_status = 'pending_proof' /* Set status indicating proof uploaded */
                          WHERE order_id = $order_id";
-            
+
             if (!mysqli_query($conn, $update_q)) {
                 throw new Exception("Failed to update invoice: " . mysqli_error($conn));
             }
@@ -89,12 +91,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
             mysqli_commit($conn);
             $response['success'] = true;
             $response['message'] = 'Receipt uploaded successfully! Awaiting admin verification.';
-            
+
         } catch (Exception $e) {
             mysqli_rollback($conn);
             $response['message'] = 'Database Error: ' . $e->getMessage();
         }
-        
+
     } else {
         $response['message'] = 'File upload failed. Check permissions.';
     }

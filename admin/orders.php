@@ -8,7 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $order_id = clean($_POST['order_id']);
     $status = clean($_POST['status']);
     
-    // Check if this is a payment confirmation and update invoice status if needed
+    // NEW: Check if this is a payment confirmation and update invoice status if needed
     $confirm_payment = isset($_POST['confirm_payment']) ? true : false; 
     
 
@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     mysqli_begin_transaction($conn);
     try {
         // Fetch current status and payment method/status for logic
+        // MODIFIED: Select from both orders and invoices
         $cur_q = "SELECT o.order_status, o.user_id, o.payment_method, i.payment_status 
                   FROM orders o 
                   LEFT JOIN invoices i ON o.order_id = i.order_id 
@@ -102,11 +103,11 @@ if ($search) {
 
 $where_sql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
 
-// Join orders, users, and invoices tables
+// MODIFIED: Join invoices table to get payment details
 $query = "SELECT o.*, u.full_name, u.email, u.phone, i.payment_status 
           FROM orders o 
           JOIN users u ON o.user_id = u.user_id 
-          LEFT JOIN invoices i ON o.order_id = i.order_id 
+          LEFT JOIN invoices i ON o.order_id = i.order_id /* JOIN INVOICES TO GET PAYMENT STATUS */
           $where_sql
           ORDER BY o.order_date DESC";
 $orders = mysqli_query($conn, $query);
@@ -223,7 +224,7 @@ $orders = mysqli_query($conn, $query);
                                             <td><strong><?php echo formatCurrency($order['total_amount']); ?></strong></td>
                                             <td>
                                                 <?php
-                                                // Payment Status badge logic
+                                                // ADDED: Payment Status badge logic for better visibility
                                                 $payment_badge_class = 'secondary';
                                                 if (isset($order['payment_status'])) {
                                                     switch ($order['payment_status']) {
@@ -240,7 +241,7 @@ $orders = mysqli_query($conn, $query);
                                             </td>
                                             <td>
                                                 <?php
-                                                // Order Status badge logic
+                                                // MODIFIED: Added 'pending_payment'
                                                 $badge_class = [
                                                     'pending_payment' => 'secondary', 
                                                     'pending' => 'warning',
@@ -249,7 +250,6 @@ $orders = mysqli_query($conn, $query);
                                                     'cancelled' => 'danger'
                                                 ];
                                                 $order_status_clean = str_replace('_', ' ', $order['order_status']);
-                                                // FIX: Use null-coalescing operator to prevent "Undefined index" error on line 172
                                                 $current_badge_class = $badge_class[$order['order_status']] ?? 'secondary';
                                                 ?>
                                                 <span class="badge bg-<?php echo $current_badge_class; ?>">
@@ -283,10 +283,11 @@ $orders = mysqli_query($conn, $query);
                                                     $detail_res = mysqli_query($conn, $detail_q);
                                                     $detail_data = $detail_res ? mysqli_fetch_assoc($detail_res) : [];
                                                     
-                                                    // MODIFIED: Fetch order items including the variant_value
-                                                    $items_query = "SELECT oi.*, p.product_name, p.image_url, oi.variant_value 
+                                                    // MODIFIED: Join variants to get variant value
+                                                    $items_query = "SELECT oi.*, p.product_name, p.image_url, v.variant_value 
                                                                    FROM order_items oi 
                                                                    JOIN products p ON oi.product_id = p.product_id 
+                                                                   LEFT JOIN product_variants v ON oi.variant_id = v.variant_id
                                                                    WHERE oi.order_id = {$order['order_id']}";
                                                     $items = mysqli_query($conn, $items_query);
                                                     ?>
@@ -352,7 +353,7 @@ $orders = mysqli_query($conn, $query);
                                                                         <td>
                                                                             <?php echo htmlspecialchars($item['product_name']); ?>
                                                                             <?php if (isset($item['variant_value']) && $item['variant_value']): ?>
-                                                                                <small class="text-muted d-block">(Variant: <?php echo htmlspecialchars($item['variant_value']); ?>)</small>
+                                                                                <small class="text-muted d-block">(<?php echo htmlspecialchars($item['variant_value']); ?>)</small>
                                                                             <?php endif; ?>
                                                                         </td>
                                                                         <td><?php echo formatCurrency($item['price']); ?></td>
@@ -429,8 +430,6 @@ $orders = mysqli_query($conn, $query);
                                                                 </div>
                                                                 <?php if (!$detail_data['payment_proof_path']): ?>
                                                                     <p class="text-danger small mt-2 mb-0">NOTE: No proof uploaded by student yet.</p>
-                                                                <?php else: ?>
-                                                                    <p class="text-success small mt-2 mb-0">Proof is available in Order Details section.</p>
                                                                 <?php endif; ?>
                                                             </div>
                                                             <?php endif; ?>
