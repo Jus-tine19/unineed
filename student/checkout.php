@@ -11,36 +11,105 @@ if (!isset($_SESSION['cart']) || empty($_SESSION['cart'])) {
 
 $user_id = $_SESSION['user_id'];
 
+// Get user details
+$query = "SELECT * FROM users WHERE user_id = $user_id";
+$result = mysqli_query($conn, $query);
+$user = mysqli_fetch_assoc($result);
+
+// Calculate cart summary
+$cart_items = $_SESSION['cart'];
+$subtotal = 0;
+$total_items = 0;
+
+foreach ($cart_items as $item) {
+    $subtotal += $item['price'] * $item['quantity'];
+    $total_items += $item['quantity'];
+}
+
+$total = $subtotal;
+$down_payment_rate = DOWN_PAYMENT_PERCENTAGE; // Use constant from database.php
+$down_payment_amount = round($total * $down_payment_rate, 2);
+$remaining_balance = $total - $down_payment_amount;
+
+$gcash_number = GCASH_NUMBER;
+$gcash_name = GCASH_NAME;
+
+// NEW LOGIC: Check if any item in the cart requires a down payment
+$is_down_payment_required_for_cart = false;
+foreach ($cart_items as $item) {
+    if (isset($item['requires_down_payment']) && $item['requires_down_payment']) {
+        $is_down_payment_required_for_cart = true;
+        break;
+    }
+}
+
+
 // Process order submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
-    // Sum cart total
-    $total_amount = 0;
-    foreach ($_SESSION['cart'] as $item) {
-        $total_amount += $item['price'] * $item['quantity'];
-    }
     
-    // Begin atomic transaction
+    // Default to a sensible option if the required payment method was hidden
+    if ($is_down_payment_required_for_cart) {
+        $payment_method = 'gcash';
+        $payment_option = clean($_POST['payment_option'] ?? 'down_payment'); // Will be down_payment or full_payment
+    } else {
+        $payment_method = clean($_POST['payment_method'] ?? 'cash_on_pickup');
+        // If down payment is NOT required, force payment_option to full_payment for consistency in the DB logic
+        $payment_option = $payment_method === 'gcash' ? clean($_POST['payment_option'] ?? 'full_payment') : 'full_payment';
+    }
+
+
+    // *** VALIDATION LOGIC ***
+    if ($is_down_payment_required_for_cart && $payment_method === 'cash_on_pickup') {
+         $error = "Cash on Claim is not allowed for this order as it contains item(s) requiring an upfront down payment. Please use GCash.";
+         goto skip_db_transaction; // Jump to end of script if validation fails
+    }
+    // *** END VALIDATION LOGIC ***
+
+    // Determine order status and payment status based on payment option and method
+    if ($payment_option === 'full_payment') {
+        $amount_paid = $total;
+        $order_status_for_db = 'pending'; 
+        // If GCash, wait for proof. If cash, it's paid on claim (treated as fully paid for status).
+        $payment_status_for_db = $payment_method === 'gcash' ? 'pending_proof' : 'fully_paid'; 
+        $is_downpayment = false;
+        
+    } else {
+        // Down payment selected (only possible if payment_method is gcash AND down payment is required for cart)
+        $amount_paid = $down_payment_amount;
+        $is_downpayment = true;
+
+        if ($payment_method === 'gcash') {
+            $order_status_for_db = 'pending_payment'; // Wait for GCash proof
+            $payment_status_for_db = 'pending_proof';
+        } else {
+            // Should not happen due to validation/UI, but defaults to standard cash payment flow
+            $order_status_for_db = 'pending'; 
+            $payment_status_for_db = 'unpaid'; 
+        }
+    }
+
+    // Begin atomic transaction (Unchanged logic)
     mysqli_begin_transaction($conn);
     
     try {
         // Create order record
         $query = "INSERT INTO orders (user_id, total_amount, payment_method, order_status) 
-                 VALUES ($user_id, $total_amount, 'cash', 'pending')";
+                 VALUES ($user_id, $total, '$payment_method', '$order_status_for_db')";
         
         if (!mysqli_query($conn, $query)) {
-            throw new Exception("Failed to create order");
+            throw new Exception("Failed to create order: " . mysqli_error($conn));
         }
         
         $order_id = mysqli_insert_id($conn);
         
-        // Process each cart item
+        // Process each cart item and deduct stock (Unchanged logic)
         foreach ($_SESSION['cart'] as $item) {
             $product_id = intval($item['product_id']);
             $quantity = intval($item['quantity']);
             $price = floatval($item['price']);
             $variants = isset($item['variants']) ? $item['variants'] : [];
 
-            // Find variant_id if product has variants
+            // Find variant_id if product has variants (Logic block unchanged)
             $variant_id = null;
             $variant_value_stored = null;
             if (!empty($variants)) {
@@ -69,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                 throw new Exception("Failed to insert order item: " . mysqli_error($conn));
             }
 
-            // Decrement product base stock
+            // Decrement product base stock immediately after order creation
             $upd = "UPDATE products SET stock_quantity = stock_quantity - $quantity WHERE product_id = $product_id";
             $res = mysqli_query($conn, $upd);
             if (!$res) {
@@ -93,13 +162,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             }
         }
         
-        // Create invoice record
+        // Create invoice record. 
         $invoice_number = 'INV-' . date('Ymd') . '-' . str_pad($order_id, 6, '0', STR_PAD_LEFT);
-        $query = "INSERT INTO invoices (order_id, invoice_number, payment_status) 
-                 VALUES ($order_id, '$invoice_number', 'unpaid')";
+        $query = "INSERT INTO invoices (order_id, invoice_number, payment_status, down_payment_due, remaining_balance) 
+                 VALUES ($order_id, '$invoice_number', '$payment_status_for_db', $down_payment_amount, $remaining_balance)";
         
         if (!mysqli_query($conn, $query)) {
-            throw new Exception("Failed to create invoice");
+            throw new Exception("Failed to create invoice: " . mysqli_error($conn));
         }
         
         // Notify admin of new order
@@ -111,33 +180,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         // Commit all changes
         mysqli_commit($conn);
         
-        // Clear cart & redirect
+        // Clear cart
         $_SESSION['cart'] = [];
-        header('Location: orders.php?success=1&order_id=' . $order_id);
+
+        // REDIRECTION: Redirect to a dedicated Gcash confirmation page if GCash payment is selected
+        if ($payment_method === 'gcash') {
+             // Directs to order details with instruction flag
+             header('Location: orders.php?id=' . $order_id . '&payment_needed=gcash');
+        } else {
+             // Standard redirect for cash/paid orders
+             header('Location: orders.php?success=1&order_id=' . $order_id);
+        }
         exit();
         
     } catch (Exception $e) {
         mysqli_rollback($conn);
         $error = "Failed to place order: " . $e->getMessage();
     }
+// --- Label to jump to for validation failure
+skip_db_transaction:
 }
-
-// Get user details
-$query = "SELECT * FROM users WHERE user_id = $user_id";
-$result = mysqli_query($conn, $query);
-$user = mysqli_fetch_assoc($result);
-
-// Calculate cart summary
-$cart_items = $_SESSION['cart'];
-$subtotal = 0;
-$total_items = 0;
-
-foreach ($cart_items as $item) {
-    $subtotal += $item['price'] * $item['quantity'];
-    $total_items += $item['quantity'];
-}
-
-$total = $subtotal;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -170,9 +232,7 @@ $total = $subtotal;
             
             <form method="POST">
                 <div class="row g-4">
-                    <!-- Order Details -->
                     <div class="col-md-8">
-                        <!-- Customer Information -->
                         <div class="card mb-4">
                             <div class="card-header">
                                 <h5 class="mb-0"><i class="bi bi-person me-2"></i>Customer Information</h5>
@@ -206,8 +266,7 @@ $total = $subtotal;
                                 </div>
                             </div>
                         </div>
-                        
-                        <!-- Order Items -->
+
                         <div class="card">
                             <div class="card-header">
                                 <h5 class="mb-0"><i class="bi bi-cart-check me-2"></i>Order Items</h5>
@@ -261,7 +320,6 @@ $total = $subtotal;
                         </div>
                     </div>
                     
-                    <!-- Order Summary -->
                     <div class="col-md-4">
                         <div class="card mb-4">
                             <div class="card-header">
@@ -278,21 +336,102 @@ $total = $subtotal;
                                 </div>
                                 <hr>
                                 <div class="d-flex justify-content-between mb-3">
-                                    <strong>Total</strong>
+                                    <strong>Total Amount Due</strong>
                                     <strong class="text-primary fs-4"><?php echo formatCurrency($total); ?></strong>
+                                </div>
+
+                                <div class="alert alert-warning mb-3">
+                                    <h6 class="mb-1"><i class="bi bi-wallet2 me-2"></i>Payment Requirement</h6>
+                                    <?php if ($is_down_payment_required_for_cart): ?>
+                                        <p class="small text-danger mt-2 mb-1">
+                                            **NOTE:** This order requires a minimum **<?php echo $down_payment_rate * 100; ?>% (<?php echo formatCurrency($down_payment_amount); ?>)** payment upfront via **GCash**.
+                                        </p>
+                                    <?php endif; ?>
+                                    <div class="d-flex justify-content-between mt-2">
+                                        <small>20% Down Payment (Min.)</small>
+                                        <strong class="text-danger"><?php echo formatCurrency($down_payment_amount); ?></strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <small>Remaining Balance</small>
+                                        <strong class="text-muted"><?php echo formatCurrency($remaining_balance); ?></strong>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         
                         <div class="card mb-4">
                             <div class="card-header">
-                                <h5 class="mb-0"><i class="bi bi-cash me-2"></i>Payment Method</h5>
+                                <h5 class="mb-0"><i class="bi bi-wallet me-2"></i>Select Payment</h5>
                             </div>
                             <div class="card-body">
-                                <div class="alert alert-info mb-0">
-                                    <i class="bi bi-info-circle me-2"></i>
-                                    <strong>Cash on Pickup</strong>
-                                    <p class="mb-0 mt-2 small">You will pay when you pick up your order. Please bring the exact amount.</p>
+                                
+                                <?php $gcash_default_checked = $is_down_payment_required_for_cart ? 'checked' : ''; ?>
+                                
+                                <?php if (!$is_down_payment_required_for_cart): ?>
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="radio" name="payment_method" id="cashOnPickup" value="cash_on_pickup" checked onchange="togglePaymentDetails(this.value)">
+                                        <label class="form-check-label fw-bold" for="cashOnPickup">
+                                            Cash (Pay Full Amount on Claim)
+                                        </label>
+                                    </div>
+                                    <?php $gcash_default_checked = ''; // Ensure cash is checked if available ?>
+                                <?php else: ?>
+                                     <div class="alert alert-danger small mb-3">
+                                         <i class="bi bi-exclamation-triangle me-2"></i>
+                                         Only **GCash** is available. This order requires a down payment.
+                                     </div>
+                                <?php endif; ?>
+
+                                <div class="form-check mb-3 <?php echo $is_down_payment_required_for_cart ? '' : 'mt-3'; ?>">
+                                    <input class="form-check-input" type="radio" name="payment_method" id="gcash" value="gcash" <?php echo $is_down_payment_required_for_cart ? 'checked' : $gcash_default_checked; ?> onchange="togglePaymentDetails(this.value)">
+                                    <label class="form-check-label fw-bold" for="gcash">
+                                        GCash (Pay Now)
+                                    </label>
+                                </div>
+                                
+                                <hr>
+                                
+                                <div id="cashDetails" class="payment-details-box <?php echo $is_down_payment_required_for_cart || $gcash_default_checked ? 'd-none' : ''; ?>">
+                                    <h6 class="text-primary">Cash Payment Details (Full Amount Due on Claim)</h6>
+                                    <p class="small mb-1">
+                                        You will pay the **full amount** of **<?php echo formatCurrency($total); ?>** when you pick up your order.
+                                    </p>
+                                </div>
+
+                                <div id="gcashDetails" class="payment-details-box <?php echo $is_down_payment_required_for_cart || $gcash_default_checked ? '' : 'd-none'; ?>">
+                                    <h6 class="text-success">GCash Payment Details</h6>
+                                    
+                                    <div class="alert alert-success p-2 small">
+                                        <strong>Account Name:</strong> <?php echo htmlspecialchars($gcash_name); ?><br>
+                                        <strong>Account Number:</strong> <?php echo htmlspecialchars($gcash_number); ?>
+                                    </div>
+
+                                    <?php if ($is_down_payment_required_for_cart): ?>
+                                        <p class="small mb-1">Please select your payment option below:</p>
+                                        <p class="small text-danger mb-2">
+                                            **IMPORTANT:** Your order status will be 'Pending Payment' until an admin verifies your GCash transaction proof.
+                                        </p>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="payment_option" id="downPaymentOption" value="down_payment" checked>
+                                            <label class="form-check-label small" for="downPaymentOption">
+                                                Pay Down Payment (<?php echo formatCurrency($down_payment_amount); ?>)
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="payment_option" id="fullPaymentOption" value="full_payment">
+                                            <label class="form-check-label small" for="fullPaymentOption">
+                                                Pay Full Amount (<?php echo formatCurrency($total); ?>)
+                                            </label>
+                                        </div>
+                                    <?php else: ?>
+                                        <p class="small mb-1">
+                                            You will pay the **full amount** of **<?php echo formatCurrency($total); ?>** via GCash before your order is processed.
+                                        </p>
+                                        <p class="small text-danger mb-2">
+                                            **IMPORTANT:** Your order status will be 'Pending Payment' until an admin verifies your GCash transaction proof.
+                                        </p>
+                                        <input type="hidden" name="payment_option" value="full_payment">
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -318,5 +457,33 @@ $total = $subtotal;
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../assets/js/script.js"></script>
+    <script>
+        const isDownPaymentRequired = <?php echo $is_down_payment_required_for_cart ? 'true' : 'false'; ?>;
+        
+        function togglePaymentDetails(method) {
+            const cashDetails = document.getElementById('cashDetails');
+            const gcashDetails = document.getElementById('gcashDetails');
+            
+            if (method === 'cash_on_pickup') {
+                if(cashDetails) cashDetails.classList.remove('d-none');
+                if (gcashDetails) gcashDetails.classList.add('d-none'); 
+
+                // Note: The downPaymentOption and fullPaymentOption elements are conditionally rendered
+                // inside gcashDetails, so they don't need explicit JS manipulation here unless
+                // they are always present. Since they are conditionally rendered, the UI handles itself.
+
+            } else if (method === 'gcash') {
+                if (cashDetails) cashDetails.classList.add('d-none');
+                if(gcashDetails) gcashDetails.classList.remove('d-none');
+            }
+        }
+        
+        // Initial call to set state correctly
+        document.addEventListener('DOMContentLoaded', () => {
+             // Re-check selected method on load
+             const selectedMethod = document.querySelector('input[name="payment_method"]:checked').value;
+             togglePaymentDetails(selectedMethod);
+        });
+    </script>
 </body>
 </html>

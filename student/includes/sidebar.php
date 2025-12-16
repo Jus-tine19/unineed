@@ -40,12 +40,6 @@ $cart_count = isset($_SESSION['cart']) ? count($_SESSION['cart']) : 0;
         <div class="nav-wrap flex-grow-1">
             <ul class="nav flex-column">
                 <li class="nav-item">
-                    <a class="nav-link <?php echo $current_page === 'dashboard' ? 'active' : ''; ?>" href="dashboard.php">
-                        <i class="bi bi-house-door"></i>
-                        <span class="label">Dashboard</span>
-                    </a>
-                </li>
-                <li class="nav-item">
                     <a class="nav-link <?php echo $current_page === 'products' ? 'active' : ''; ?>" href="products.php">
                         <i class="bi bi-shop"></i>
                         <span class="label">Shop Products</span>
@@ -79,12 +73,6 @@ $cart_count = isset($_SESSION['cart']) ? count($_SESSION['cart']) : 0;
                         <?php if ($unread_count > 0): ?>
                             <span class="badge bg-warning ms-auto"><?php echo $unread_count; ?></span>
                         <?php endif; ?>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link <?php echo $current_page === 'reports' ? 'active' : ''; ?>" href="reports.php">
-                        <i class="bi bi-file-earmark-text"></i>
-                        <span class="label">Reports</span>
                     </a>
                 </li>
                 <li class="nav-item">

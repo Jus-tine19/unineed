@@ -17,7 +17,8 @@ $result = mysqli_query($conn, $query);
 $stats['revenue'] = mysqli_fetch_assoc($result)['revenue'] ?? 0;
 
 // Pending Orders
-$query = "SELECT COUNT(*) as pending FROM orders WHERE order_status = 'pending'";
+// MODIFIED: Include 'pending_payment' orders in the count of pending administrative actions
+$query = "SELECT COUNT(*) as pending FROM orders WHERE order_status IN ('pending', 'pending_payment')";
 $result = mysqli_query($conn, $query);
 $stats['pending_orders'] = mysqli_fetch_assoc($result)['pending'];
 
@@ -75,7 +76,6 @@ $monthly_sales = mysqli_query($conn, $query);
         </div>
         
         <div class="content-area">
-            <!-- Statistics Cards -->
             <div class="row g-4 mb-4">
                 <div class="col-md-3">
                     <div class="stat-card stat-primary">
@@ -136,7 +136,6 @@ $monthly_sales = mysqli_query($conn, $query);
             <?php endif; ?>
             
             <div class="row g-4">
-                <!-- Recent Orders -->
                 <div class="col-md-8">
                     <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center">
@@ -164,15 +163,19 @@ $monthly_sales = mysqli_query($conn, $query);
                                                     <td><?php echo formatCurrency($order['total_amount']); ?></td>
                                                     <td>
                                                         <?php
+                                                        // MODIFIED: Added 'pending_payment'
                                                         $badge_class = [
+                                                            'pending_payment' => 'secondary',
                                                             'pending' => 'warning',
                                                             'ready for pickup' => 'info',
                                                             'completed' => 'success',
                                                             'cancelled' => 'danger'
                                                         ];
+                                                        $order_status_clean = str_replace('_', ' ', $order['order_status']);
+                                                        $current_badge_class = $badge_class[$order['order_status']] ?? 'secondary';
                                                         ?>
-                                                        <span class="badge bg-<?php echo $badge_class[$order['order_status']]; ?>">
-                                                            <?php echo ucfirst($order['order_status']); ?>
+                                                        <span class="badge bg-<?php echo $current_badge_class; ?>">
+                                                            <?php echo ucfirst($order_status_clean); ?>
                                                         </span>
                                                     </td>
                                                     <td><?php echo date('M j, Y', strtotime($order['order_date'])); ?></td>
@@ -190,7 +193,6 @@ $monthly_sales = mysqli_query($conn, $query);
                     </div>
                 </div>
                 
-                <!-- Monthly Sales Chart -->
                 <div class="col-md-4">
                     <div class="card">
                         <div class="card-header">

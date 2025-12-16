@@ -31,6 +31,44 @@ mysqli_set_charset($conn, "utf8");
 // Set MySQL session timezone to +08:00 (Philippines)
 @mysqli_query($conn, "SET time_zone = '+08:00'");
 
+
+// --- APPLICATION CONSTANTS AND DYNAMIC SETTINGS ---
+
+// Application-wide Constants
+define('DOWN_PAYMENT_PERCENTAGE', 0.20); // 20% down payment
+
+// Dynamic GCash Settings Fetch
+if ($conn) {
+    // Check if the settings table exists before querying
+    $check_settings = mysqli_query($conn, "SHOW TABLES LIKE 'settings'");
+    if ($check_settings && mysqli_num_rows($check_settings) > 0) {
+        $gcash_settings_query = "SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('gcash_number', 'gcash_name')";
+        $gcash_settings_result = mysqli_query($conn, $gcash_settings_query);
+        
+        $settings = [];
+        if ($gcash_settings_result) {
+            while ($row = mysqli_fetch_assoc($gcash_settings_result)) {
+                $settings[$row['setting_key']] = $row['setting_value'];
+            }
+        }
+
+        // Define the GCash Constants dynamically (using fallbacks if not found in DB)
+        define('GCASH_NUMBER', $settings['gcash_number'] ?? '09171234567');
+        define('GCASH_NAME', $settings['gcash_name'] ?? 'UniNeeds Treasurer');
+        
+    } else {
+        // Fallback constants if 'settings' table does not exist
+        define('GCASH_NUMBER', '09171234567');
+        define('GCASH_NAME', 'UniNeeds Treasurer');
+    }
+} else {
+    // Fallback constants if DB connection failed
+    define('GCASH_NUMBER', '09171234567');
+    define('GCASH_NAME', 'UniNeeds Treasurer');
+}
+
+// --- GLOBAL FUNCTIONS ---
+
 // Check if user is logged in
 function isLoggedIn() {
     return isset($_SESSION['user_id']);
@@ -58,7 +96,8 @@ function requireLogin() {
 function requireAdmin() {
     requireLogin();
     if (!isAdmin()) {
-        header('Location: /unineeds/student/dashboard.php');
+        // Redirect to student product page since dashboard was removed
+        header('Location: /unineeds/student/products.php'); 
         exit();
     }
 }

@@ -7,18 +7,43 @@ requireAdmin();
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $order_id = clean($_POST['order_id']);
     $status = clean($_POST['status']);
+    
+    // NEW: Check if this is a payment confirmation and update invoice status if needed
+    $confirm_payment = isset($_POST['confirm_payment']) ? true : false; 
+    
 
     // Start transaction so status change and any stock restores are atomic
     mysqli_begin_transaction($conn);
     try {
-        // Fetch current status to avoid double-restoring stock
-        $cur_q = "SELECT order_status, user_id FROM orders WHERE order_id = $order_id FOR UPDATE";
+        // Fetch current status and payment method/status for logic
+        $cur_q = "SELECT o.order_status, o.user_id, o.payment_method, i.payment_status 
+                  FROM orders o 
+                  LEFT JOIN invoices i ON o.order_id = i.order_id 
+                  WHERE o.order_id = $order_id FOR UPDATE";
         $cur_res = mysqli_query($conn, $cur_q);
         $cur_row = $cur_res ? mysqli_fetch_assoc($cur_res) : null;
         $previous_status = $cur_row ? $cur_row['order_status'] : null;
+        $previous_payment_status = $cur_row ? $cur_row['payment_status'] : null;
         $order_user_id = $cur_row ? $cur_row['user_id'] : null;
 
-        // Update status
+        // --- Payment Verification Logic ---
+        if ($previous_status === 'pending_payment' && $status === 'pending' && $confirm_payment) {
+             // Admin confirmed payment. Update invoice status to downpayment_paid
+             $new_payment_status = 'downpayment_paid'; 
+             $update_invoice = "UPDATE invoices SET payment_status = '$new_payment_status' WHERE order_id = $order_id";
+             if (!mysqli_query($conn, $update_invoice)) {
+                 throw new Exception('Failed to update invoice payment status: ' . mysqli_error($conn));
+             }
+             // Status is now 'pending' (processing) which is the new submitted status.
+        } elseif ($status === 'completed') {
+             // If marking as completed, set payment status to fully_paid (assuming final cash payment made)
+             $update_invoice = "UPDATE invoices SET payment_status = 'fully_paid' WHERE order_id = $order_id AND payment_status != 'fully_paid'";
+             if (!mysqli_query($conn, $update_invoice)) {
+                 throw new Exception('Failed to update invoice payment status to fully paid: ' . mysqli_error($conn));
+             }
+        }
+        
+        // Update order status
         $query = "UPDATE orders SET order_status = '$status' WHERE order_id = $order_id";
         if (!mysqli_query($conn, $query)) {
             throw new Exception('Failed to update order status: ' . mysqli_error($conn));
@@ -50,12 +75,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
         }
 
         // Create notification for student
-        $order_query = "SELECT user_id FROM orders WHERE order_id = $order_id";
-        $order_result = mysqli_query($conn, $order_query);
-        $order_data = mysqli_fetch_assoc($order_result);
-
         $message = "Your order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " has been updated to: " . ucfirst($status);
-        $notif_query = "INSERT INTO notifications (user_id, message, type) VALUES ({$order_data['user_id']}, '$message', 'order_update')";
+        $notif_query = "INSERT INTO notifications (user_id, message, type) VALUES ({$order_user_id}, '$message', 'order_update')";
         mysqli_query($conn, $notif_query);
 
         mysqli_commit($conn);
@@ -81,9 +102,10 @@ if ($search) {
 
 $where_sql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
 
-$query = "SELECT o.*, u.full_name, u.email, u.phone 
+$query = "SELECT o.*, u.full_name, u.email, u.phone, i.payment_status 
           FROM orders o 
           JOIN users u ON o.user_id = u.user_id 
+          LEFT JOIN invoices i ON o.order_id = i.order_id /* JOIN INVOICES TO GET PAYMENT STATUS */
           $where_sql
           ORDER BY o.order_date DESC";
 $orders = mysqli_query($conn, $query);
@@ -143,7 +165,6 @@ $orders = mysqli_query($conn, $query);
                 </div>
             <?php endif; ?>
             
-            <!-- Filter Bar -->
             <div class="filter-bar">
                 <form method="GET" class="row g-3">
                     <div class="col-md-4">
@@ -152,7 +173,8 @@ $orders = mysqli_query($conn, $query);
                     <div class="col-md-3">
                         <select class="form-select" name="status">
                             <option value="">All Status</option>
-                            <option value="pending" <?php echo $status_filter === 'pending' ? 'selected' : ''; ?>>Pending</option>
+                            <option value="pending_payment" <?php echo $status_filter === 'pending_payment' ? 'selected' : ''; ?>>Pending Payment</option>
+                            <option value="pending" <?php echo $status_filter === 'pending' ? 'selected' : ''; ?>>Pending (Processing)</option>
                             <option value="ready for pickup" <?php echo $status_filter === 'ready for pickup' ? 'selected' : ''; ?>>Ready for Pickup</option>
                             <option value="completed" <?php echo $status_filter === 'completed' ? 'selected' : ''; ?>>Completed</option>
                             <option value="cancelled" <?php echo $status_filter === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
@@ -171,7 +193,6 @@ $orders = mysqli_query($conn, $query);
                 </form>
             </div>
             
-            <!-- Orders Table -->
             <div class="card">
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -191,7 +212,6 @@ $orders = mysqli_query($conn, $query);
                             <tbody>
                                 <?php if (mysqli_num_rows($orders) > 0): ?>
                                     <?php while ($order = mysqli_fetch_assoc($orders)): ?>
-                                        <!-- Main Order Row -->
                                         <tr class="order-row" data-order-id="<?php echo $order['order_id']; ?>" onclick="toggleOrderDetails(<?php echo $order['order_id']; ?>)">
                                             <td><strong>#<?php echo str_pad($order['order_id'], 6, '0', STR_PAD_LEFT); ?></strong></td>
                                             <td>
@@ -200,18 +220,36 @@ $orders = mysqli_query($conn, $query);
                                             </td>
                                             <td><?php echo htmlspecialchars($order['phone']); ?></td>
                                             <td><strong><?php echo formatCurrency($order['total_amount']); ?></strong></td>
-                                            <td><span class="badge bg-secondary"><?php echo ucfirst($order['payment_method']); ?></span></td>
+                                            <td>
+                                                <?php
+                                                $payment_badge_class = 'secondary';
+                                                if (isset($order['payment_status'])) {
+                                                    switch ($order['payment_status']) {
+                                                        case 'fully_paid': $payment_badge_class = 'success'; break;
+                                                        case 'downpayment_paid': $payment_badge_class = 'primary'; break;
+                                                        case 'pending_proof': $payment_badge_class = 'warning'; break;
+                                                        case 'unpaid': $payment_badge_class = 'danger'; break;
+                                                    }
+                                                }
+                                                ?>
+                                                <span class="badge bg-<?php echo $payment_badge_class; ?>" title="Payment Status: <?php echo ucfirst(str_replace('_', ' ', $order['payment_status'] ?? 'N/A')); ?>">
+                                                    <?php echo ucfirst($order['payment_method']); ?>
+                                                </span>
+                                            </td>
                                             <td>
                                                 <?php
                                                 $badge_class = [
+                                                    'pending_payment' => 'secondary', // ADDED
                                                     'pending' => 'warning',
                                                     'ready for pickup' => 'info',
                                                     'completed' => 'success',
                                                     'cancelled' => 'danger'
                                                 ];
+                                                $order_status_clean = str_replace('_', ' ', $order['order_status']);
+                                                $current_badge_class = $badge_class[$order['order_status']] ?? 'secondary';
                                                 ?>
-                                                <span class="badge bg-<?php echo $badge_class[$order['order_status']]; ?>">
-                                                    <?php echo ucfirst($order['order_status']); ?>
+                                                <span class="badge bg-<?php echo $current_badge_class; ?>">
+                                                    <?php echo ucfirst($order_status_clean); ?>
                                                 </span>
                                             </td>
                                             <td><?php echo date('M j, Y g:i A', strtotime($order['order_date'])); ?></td>
@@ -229,14 +267,22 @@ $orders = mysqli_query($conn, $query);
                                             </td>
                                         </tr>
                                         
-                                        <!-- Collapsible Details Row -->
                                         <tr class="order-details-row d-none" id="details-<?php echo $order['order_id']; ?>">
                                             <td colspan="8">
                                                 <div class="order-details-content">
                                                     <?php
-                                                    $items_query = "SELECT oi.*, p.product_name, p.image_url 
+                                                    // Re-select order details including invoice information for the detail view
+                                                    $detail_q = "SELECT o.*, i.payment_status, i.down_payment_due, i.remaining_balance 
+                                                                 FROM orders o 
+                                                                 LEFT JOIN invoices i ON o.order_id = i.order_id 
+                                                                 WHERE o.order_id = {$order['order_id']}";
+                                                    $detail_res = mysqli_query($conn, $detail_q);
+                                                    $detail_data = $detail_res ? mysqli_fetch_assoc($detail_res) : [];
+                                                    
+                                                    $items_query = "SELECT oi.*, p.product_name, p.image_url, v.variant_value 
                                                                    FROM order_items oi 
                                                                    JOIN products p ON oi.product_id = p.product_id 
+                                                                   LEFT JOIN product_variants v ON oi.variant_id = v.variant_id
                                                                    WHERE oi.order_id = {$order['order_id']}";
                                                     $items = mysqli_query($conn, $items_query);
                                                     ?>
@@ -249,19 +295,33 @@ $orders = mysqli_query($conn, $query);
                                                     </div>
                                                     
                                                     <div class="row mb-3">
-                                                        <div class="col-md-6">
+                                                        <div class="col-md-4">
                                                             <h6>Customer Information</h6>
                                                             <p class="mb-1"><strong>Name:</strong> <?php echo htmlspecialchars($order['full_name']); ?></p>
                                                             <p class="mb-1"><strong>Email:</strong> <?php echo htmlspecialchars($order['email']); ?></p>
                                                             <p class="mb-1"><strong>Phone:</strong> <?php echo htmlspecialchars($order['phone']); ?></p>
                                                         </div>
-                                                        <div class="col-md-6">
-                                                            <h6>Order Information</h6>
+                                                        <div class="col-md-4">
+                                                            <h6>Order & Status</h6>
                                                             <p class="mb-1"><strong>Order Date:</strong> <?php echo date('M j, Y g:i A', strtotime($order['order_date'])); ?></p>
                                                             <p class="mb-1"><strong>Payment Method:</strong> <?php echo ucfirst($order['payment_method']); ?></p>
-                                                            <p class="mb-1"><strong>Status:</strong> <span class="badge bg-<?php echo $badge_class[$order['order_status']]; ?>"><?php echo ucfirst($order['order_status']); ?></span></p>
+                                                            <p class="mb-1"><strong>Order Status:</strong> <span class="badge bg-<?php echo $current_badge_class; ?>"><?php echo ucfirst($order_status_clean); ?></span></p>
+                                                        </div>
+                                                        <div class="col-md-4">
+                                                            <h6>Financials</h6>
+                                                            <p class="mb-1"><strong>Total Amount:</strong> <strong class="text-success"><?php echo formatCurrency($detail_data['total_amount'] ?? 0); ?></strong></p>
+                                                            <p class="mb-1"><strong>Payment Status:</strong> <span class="badge bg-<?php echo $payment_badge_class; ?>"><?php echo ucfirst(str_replace('_', ' ', $detail_data['payment_status'] ?? 'N/A')); ?></span></p>
+                                                            <p class="mb-1"><strong>Down Payment Due:</strong> <?php echo formatCurrency($detail_data['down_payment_due'] ?? 0); ?></p>
+                                                            <p class="mb-1"><strong>Remaining Balance:</strong> <?php echo formatCurrency($detail_data['remaining_balance'] ?? 0); ?></p>
                                                         </div>
                                                     </div>
+                                                    
+                                                    <?php if ($order['order_status'] === 'pending_payment' && $order['payment_method'] === 'gcash'): ?>
+                                                        <div class="alert alert-warning mb-4">
+                                                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                                            <strong>GCash Payment Pending Verification.</strong> The student must submit proof of payment (min. <?php echo formatCurrency($detail_data['down_payment_due'] ?? 0); ?>) before you can update this status to 'Pending (Processing)'.
+                                                            </div>
+                                                    <?php endif; ?>
                                                     
                                                     <h6>Order Items</h6>
                                                     <div class="table-responsive">
@@ -277,7 +337,12 @@ $orders = mysqli_query($conn, $query);
                                                             <tbody>
                                                                 <?php while ($item = mysqli_fetch_assoc($items)): ?>
                                                                     <tr>
-                                                                        <td><?php echo htmlspecialchars($item['product_name']); ?></td>
+                                                                        <td>
+                                                                            <?php echo htmlspecialchars($item['product_name']); ?>
+                                                                            <?php if ($item['variant_value']): ?>
+                                                                                <small class="text-muted d-block">(<?php echo htmlspecialchars($item['variant_value']); ?>)</small>
+                                                                            <?php endif; ?>
+                                                                        </td>
                                                                         <td><?php echo formatCurrency($item['price']); ?></td>
                                                                         <td><?php echo $item['quantity']; ?></td>
                                                                         <td><?php echo formatCurrency($item['price'] * $item['quantity']); ?></td>
@@ -296,7 +361,6 @@ $orders = mysqli_query($conn, $query);
                                             </td>
                                         </tr>
                                         
-                                        <!-- Update Status Modal -->
                                         <div class="modal fade" id="statusModal<?php echo $order['order_id']; ?>" tabindex="-1">
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
@@ -309,35 +373,53 @@ $orders = mysqli_query($conn, $query);
                                                             <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>">
                                                             <div class="mb-3">
                                                                 <label class="form-label">Current Status</label>
-                                                                <input type="text" class="form-control" value="<?php echo ucfirst($order['order_status']); ?>" readonly>
+                                                                <input type="text" class="form-control" value="<?php echo ucfirst($order_status_clean); ?>" readonly>
                                                             </div>
                                                             <div class="mb-3">
                                                                 <label class="form-label">New Status</label>
-                                                                <select class="form-select" name="status" required>
+                                                                <select class="form-select" name="status" id="statusSelect<?php echo $order['order_id']; ?>" required>
                                                                     <option value="">Select Status</option>
                                                                     <?php
-                                                                    // Only show statuses that are different from the current one
                                                                     $statusOptions = [
-                                                                        'pending' => 'Pending',
+                                                                        'pending_payment' => 'Pending Payment',
+                                                                        'pending' => 'Pending (Processing)',
                                                                         'ready for pickup' => 'Ready for Pickup',
                                                                         'completed' => 'Completed',
                                                                         'cancelled' => 'Cancelled'
                                                                     ];
+                                                                    $current_status = $order['order_status'];
                                                                     foreach ($statusOptions as $sKey => $sLabel) {
-                                                                        // Always skip the current status
-                                                                        if ($sKey === $order['order_status']) continue;
-                                                                        // Business rule: when current status is 'ready for pickup', do not allow
-                                                                        // changing back to 'pending' (hide 'pending' option)
-                                                                        if ($order['order_status'] === 'ready for pickup' && $sKey === 'pending') continue;
+                                                                        if ($sKey === $current_status) continue;
+                                                                        
+                                                                        // Cannot move backward from R-F-P except to Cancelled
+                                                                        if ($current_status === 'ready for pickup' && in_array($sKey, ['pending', 'pending_payment'])) continue;
+
+                                                                        // Cannot jump from P-P to R-F-P or Completed directly
+                                                                        if ($current_status === 'pending_payment' && in_array($sKey, ['ready for pickup', 'completed'])) continue;
+
+                                                                        // Cannot update status from Completed/Cancelled
+                                                                        if (in_array($current_status, ['completed', 'cancelled'])) continue;
                                                                     ?>
                                                                         <option value="<?php echo htmlspecialchars($sKey); ?>"><?php echo htmlspecialchars($sLabel); ?></option>
                                                                     <?php } ?>
                                                                 </select>
                                                             </div>
-                                                        </div>
-                                                        <div class="modal-footer">
-                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                            <button type="submit" name="update_status" class="btn btn-primary">Update Status</button>
+                                                            
+                                                            <?php if ($current_status === 'pending_payment'): ?>
+                                                            <div class="alert alert-info" id="paymentConfirmBlock<?php echo $order['order_id']; ?>" style="display:none;">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" value="1" name="confirm_payment" id="confirmPaymentCheck<?php echo $order['order_id']; ?>">
+                                                                    <label class="form-check-label" for="confirmPaymentCheck<?php echo $order['order_id']; ?>">
+                                                                        Confirm Down Payment (<?php echo formatCurrency($detail_data['down_payment_due'] ?? 0); ?>) has been received and verified.
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                            <?php endif; ?>
+                                                            
+                                                            <div class="modal-footer">
+                                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                                <button type="submit" name="update_status" class="btn btn-primary">Update Status</button>
+                                                            </div>
                                                         </div>
                                                     </form>
                                                 </div>
@@ -393,6 +475,27 @@ $orders = mysqli_query($conn, $query);
                 orderRow.classList.remove('expanded');
             }
         }
+        
+        // JS to toggle payment confirmation box when changing status from PENDING_PAYMENT to PENDING
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('select[id^="statusSelect"]').forEach(selectElement => {
+                const orderId = selectElement.id.replace('statusSelect', '');
+                const confirmBlock = document.getElementById('paymentConfirmBlock' + orderId);
+                
+                if (confirmBlock) {
+                    selectElement.addEventListener('change', function() {
+                        if (this.value === 'pending') {
+                            confirmBlock.style.display = 'block';
+                            // Ensure checkbox is required if visible and target is 'pending'
+                            document.getElementById('confirmPaymentCheck' + orderId).setAttribute('required', 'required');
+                        } else {
+                            confirmBlock.style.display = 'none';
+                            document.getElementById('confirmPaymentCheck' + orderId).removeAttribute('required');
+                        }
+                    });
+                }
+            });
+        });
     </script>
 </body>
 </html>

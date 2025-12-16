@@ -28,6 +28,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $category = clean($_POST['category']);
         $status = clean($_POST['status']);
         
+        // ADDED: Down Payment Checkbox
+        $requires_down_payment = isset($_POST['requires_down_payment']) ? 1 : 0;
+        
         // Check if we have variants
         $has_variants = isset($_POST['variant_types']) && is_array($_POST['variant_types']) && !empty(array_filter($_POST['variant_types']));
         
@@ -92,12 +95,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (isset($_POST['add_product'])) {
-            $query = "INSERT INTO products (product_name, description, category, price, stock_quantity, image_path, primary_color, secondary_color, accent_color, status) 
+            // UPDATED: Added requires_down_payment column to INSERT query
+            $query = "INSERT INTO products (product_name, description, category, price, stock_quantity, image_path, primary_color, secondary_color, accent_color, status, requires_down_payment) 
                      VALUES ('$product_name', '$description', '$category', $base_price, $stock_quantity, " . 
-                     ($image_path ? "'$image_path'" : "NULL") . ", '$primary_color', '$secondary_color', '$accent_color', '$status')";
+                     ($image_path ? "'$image_path'" : "NULL") . ", '$primary_color', '$secondary_color', '$accent_color', '$status', $requires_down_payment)";
             $message = "Product added successfully!";
         } else {
             $product_id = clean($_POST['product_id']);
+            // UPDATED: Added requires_down_payment column to UPDATE query
             $query = "UPDATE products SET 
                      product_name = '$product_name',
                      description = '$description',
@@ -105,7 +110,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      price = $base_price,
                      stock_quantity = $stock_quantity,
                      " . ($image_path ? "image_path = '$image_path'," : "") . "
-                     status = '$status'
+                     status = '$status',
+                     requires_down_payment = $requires_down_payment
                      WHERE product_id = $product_id";
             $message = "Product updated successfully!";
         }
@@ -272,6 +278,7 @@ if (isset($_POST['delete_product'])) {
 
 // Get all products with variant price and stock information
 $query = "SELECT p.*,
+          p.requires_down_payment, /* ADDED: Fetch the down payment requirement status */
           NULLIF(MIN(v.price), 0) as min_variant_price,
           NULLIF(MAX(v.price), 0) as max_variant_price,
           COUNT(v.variant_id) as variant_count,
@@ -286,6 +293,9 @@ $products = mysqli_query($conn, $query);
 // Get categories
 $categories_query = "SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != ''";
 $categories = mysqli_query($conn, $categories_query);
+
+// Get the down payment rate percentage from the config
+$down_payment_rate = DOWN_PAYMENT_PERCENTAGE * 100;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -345,8 +355,8 @@ $categories = mysqli_query($conn, $categories_query);
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php if (mysqli_num_rows($products) > 0): ?>
-                                    <?php while ($product = mysqli_fetch_assoc($products)): ?>
+                                <?php if (mysqli_num_rows($products) > 0) { // FIXED: Changed to brace syntax ?>
+                                    <?php while ($product = mysqli_fetch_assoc($products)) { // FIXED: Changed to brace syntax ?>
                                         <tr>
                                             <td><?php echo $product['product_id']; ?></td>
                                             <td>
@@ -502,7 +512,8 @@ $categories = mysqli_query($conn, $categories_query);
                                                                     <input type="number" class="form-control" name="stock_quantity" value="<?php echo $product['stock_quantity']; ?>" id="stockInput<?php echo $product['product_id']; ?>">
                                                                 </div>
                                                                 
-                                                                <div class="col-md-6"><?php 
+                                                                <div class="col-md-6">
+                                                                    <?php 
                                                                     // Check if this product has variants to hide base fields
                                                                     $has_existing_variants = false;
                                                                     $check_variants = mysqli_query($conn, "SELECT COUNT(*) as count FROM product_variants WHERE product_id = " . $product['product_id']);
@@ -510,10 +521,10 @@ $categories = mysqli_query($conn, $categories_query);
                                                                         $variant_count_row = mysqli_fetch_assoc($check_variants);
                                                                         $has_existing_variants = $variant_count_row['count'] > 0;
                                                                     }
-                                                                ?>
-                                                                <script>
+                                                                    ?>
+                                                                    <script>
                                                                     // Fix for Edit Modal: Remove 'required' on load if variants exist
-                                                                    <?php if ($has_existing_variants): ?>
+                                                                    <?php if ($has_existing_variants) { ?> // FIXED: Changed to brace syntax
                                                                     document.addEventListener('DOMContentLoaded', function() {
                                                                         const priceInput = document.getElementById('priceInput<?php echo $product['product_id']; ?>');
                                                                         const stockInput = document.getElementById('stockInput<?php echo $product['product_id']; ?>');
@@ -524,20 +535,31 @@ $categories = mysqli_query($conn, $categories_query);
                                                                             checkVariantFieldsEdit(<?php echo $product['product_id']; ?>);
                                                                         }
                                                                     });
-                                                                    <?php else: ?>
+                                                                    <?php } else { ?> // FIXED: Changed to brace syntax
                                                                     document.addEventListener('DOMContentLoaded', function() {
                                                                         const priceInput = document.getElementById('priceInput<?php echo $product['product_id']; ?>');
                                                                         const stockInput = document.getElementById('stockInput<?php echo $product['product_id']; ?>');
                                                                         if (priceInput) priceInput.setAttribute('required', 'required');
                                                                         if (stockInput) stockInput.setAttribute('required', 'required');
                                                                     });
-                                                                    <?php endif; ?>
-                                                                </script>
+                                                                    <?php } // FIXED: Changed to brace syntax ?>
+                                                                    </script>
                                                                     <label class="form-label">Status *</label>
                                                                     <select class="form-select" name="status" required>
                                                                         <option value="available" <?php echo $product['status'] === 'available' ? 'selected' : ''; ?>>Available</option>
                                                                         <option value="unavailable" <?php echo $product['status'] === 'unavailable' ? 'selected' : ''; ?>>Unavailable</option>
                                                                     </select>
+                                                                </div>
+                                                                
+                                                                <?php 
+                                                                    $is_required = $product['requires_down_payment'] == 1 ? 'checked' : '';
+                                                                ?>
+                                                                <div class="col-md-6">
+                                                                    <label class="form-label">Down Payment</label>
+                                                                    <div class="form-check form-switch mt-2">
+                                                                        <input class="form-check-input" type="checkbox" role="switch" id="requiresDownPaymentEdit<?php echo $product['product_id']; ?>" name="requires_down_payment" value="1" <?php echo $is_required; ?>>
+                                                                        <label class="form-check-label" for="requiresDownPaymentEdit<?php echo $product['product_id']; ?>">Requires <?php echo $down_payment_rate; ?>% Down Payment (GCash Only)</label>
+                                                                    </div>
                                                                 </div>
                                                                 <div class="col-12">
                                                                     <label class="form-label">Product Image</label>
@@ -566,8 +588,8 @@ $categories = mysqli_query($conn, $categories_query);
                                                 </div>
                                             </div>
                                         </div>
-                                    <?php endwhile; ?>
-                                <?php else: ?>
+                                    <?php } // FIXED: Closed while loop with brace ?>
+                                <?php } else { // FIXED: Closed if block with brace and started else ?>
                                     <tr>
                                         <td colspan="8">
                                             <div class="empty-state">
@@ -577,7 +599,7 @@ $categories = mysqli_query($conn, $categories_query);
                                             </div>
                                         </td>
                                     </tr>
-                                <?php endif; ?>
+                                <?php } // FIXED: Closed else block with brace ?>
                             </tbody>
                         </table>
                     </div>
@@ -644,6 +666,14 @@ $categories = mysqli_query($conn, $categories_query);
                                     <option value="available">Available</option>
                                     <option value="unavailable">Unavailable</option>
                                 </select>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label class="form-label">Down Payment</label>
+                                <div class="form-check form-switch mt-2">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="requiresDownPaymentAdd" name="requires_down_payment" value="1">
+                                    <label class="form-check-label" for="requiresDownPaymentAdd">Requires <?php echo $down_payment_rate; ?>% Down Payment (GCash Only)</label>
+                                </div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Product Image</label>
