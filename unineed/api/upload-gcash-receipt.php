@@ -1,6 +1,9 @@
+// unineed/api/upload-gcash-receipt.php
+
 <?php
 require_once '../config/database.php';
-require_once '../includes/image_helper.php'; // Assuming this helper contains file upload functions
+// We don't assume external file upload helpers, relying on built-in PHP
+// require_once '../includes/image_helper.php';
 requireStudent();
 
 header('Content-Type: application/json');
@@ -39,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
         exit();
     }
     
+    // Only allow upload if status is 'pending_payment' AND payment method is 'gcash'
     if ($order_data['order_status'] !== 'pending_payment' || $order_data['payment_method'] !== 'gcash') {
         $response['message'] = 'Receipt upload is not allowed for this order status/method.';
         echo json_encode($response);
@@ -51,8 +55,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
         mkdir($uploadDir, 0777, true);
     }
     
-    // Assuming image_helper.php has a function like uploadGcashReceiptImage
-    // Since I cannot access image_helper.php, I will create simple upload logic here.
     $fileName = basename($_FILES['receipt_image']['name']);
     $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
     $allowedExts = ['jpg', 'jpeg', 'png'];
@@ -73,11 +75,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
         mysqli_begin_transaction($conn);
         try {
             // Update the invoice record to store the proof path and flag for admin review
-            // Assuming 'invoices' table has a 'payment_proof_path' column (if not, you need to add it)
-            // SQL Manual Action Required: ALTER TABLE invoices ADD COLUMN payment_proof_path VARCHAR(255) NULL;
             $update_q = "UPDATE invoices 
                          SET payment_proof_path = '$dbPath', 
-                             payment_status = 'pending_proof' /* Set to a specific status indicating proof uploaded */
+                             payment_status = 'pending_proof' 
                          WHERE order_id = $order_id";
             
             if (!mysqli_query($conn, $update_q)) {

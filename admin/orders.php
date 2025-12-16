@@ -8,7 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $order_id = clean($_POST['order_id']);
     $status = clean($_POST['status']);
     
-    // NEW: Check if this is a payment confirmation and update invoice status if needed
+    // Check if this is a payment confirmation and update invoice status if needed
     $confirm_payment = isset($_POST['confirm_payment']) ? true : false; 
     
 
@@ -102,10 +102,11 @@ if ($search) {
 
 $where_sql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
 
+// Join orders, users, and invoices tables
 $query = "SELECT o.*, u.full_name, u.email, u.phone, i.payment_status 
           FROM orders o 
           JOIN users u ON o.user_id = u.user_id 
-          LEFT JOIN invoices i ON o.order_id = i.order_id /* JOIN INVOICES TO GET PAYMENT STATUS */
+          LEFT JOIN invoices i ON o.order_id = i.order_id 
           $where_sql
           ORDER BY o.order_date DESC";
 $orders = mysqli_query($conn, $query);
@@ -222,6 +223,7 @@ $orders = mysqli_query($conn, $query);
                                             <td><strong><?php echo formatCurrency($order['total_amount']); ?></strong></td>
                                             <td>
                                                 <?php
+                                                // Payment Status badge logic
                                                 $payment_badge_class = 'secondary';
                                                 if (isset($order['payment_status'])) {
                                                     switch ($order['payment_status']) {
@@ -238,8 +240,9 @@ $orders = mysqli_query($conn, $query);
                                             </td>
                                             <td>
                                                 <?php
+                                                // Order Status badge logic
                                                 $badge_class = [
-                                                    'pending_payment' => 'secondary', // ADDED
+                                                    'pending_payment' => 'secondary', 
                                                     'pending' => 'warning',
                                                     'ready for pickup' => 'info',
                                                     'completed' => 'success',
@@ -271,18 +274,18 @@ $orders = mysqli_query($conn, $query);
                                             <td colspan="8">
                                                 <div class="order-details-content">
                                                     <?php
-                                                    // Re-select order details including invoice information for the detail view
-                                                    $detail_q = "SELECT o.*, i.payment_status, i.down_payment_due, i.remaining_balance 
+                                                    // Re-select order details including full invoice information for the detail view
+                                                    $detail_q = "SELECT o.*, i.payment_status, i.down_payment_due, i.remaining_balance, i.payment_proof_path 
                                                                  FROM orders o 
                                                                  LEFT JOIN invoices i ON o.order_id = i.order_id 
                                                                  WHERE o.order_id = {$order['order_id']}";
                                                     $detail_res = mysqli_query($conn, $detail_q);
                                                     $detail_data = $detail_res ? mysqli_fetch_assoc($detail_res) : [];
                                                     
-                                                    $items_query = "SELECT oi.*, p.product_name, p.image_url, v.variant_value 
+                                                    // MODIFIED: Simplified query to rely on order_items.variant_value
+                                                    $items_query = "SELECT oi.*, p.product_name, p.image_url, oi.variant_value 
                                                                    FROM order_items oi 
                                                                    JOIN products p ON oi.product_id = p.product_id 
-                                                                   LEFT JOIN product_variants v ON oi.variant_id = v.variant_id
                                                                    WHERE oi.order_id = {$order['order_id']}";
                                                     $items = mysqli_query($conn, $items_query);
                                                     ?>
@@ -316,11 +319,19 @@ $orders = mysqli_query($conn, $query);
                                                         </div>
                                                     </div>
                                                     
-                                                    <?php if ($order['order_status'] === 'pending_payment' && $order['payment_method'] === 'gcash'): ?>
-                                                        <div class="alert alert-warning mb-4">
+                                                    <?php if ($detail_data['payment_proof_path']): ?>
+                                                        <div class="card card-body bg-light mb-4">
+                                                            <h6><i class="bi bi-receipt me-2"></i>Payment Proof</h6>
+                                                            <p class="small mb-2">Student submitted the following receipt for verification:</p>
+                                                            <a href="../<?php echo htmlspecialchars($detail_data['payment_proof_path']); ?>" target="_blank" class="btn btn-sm btn-primary w-50">
+                                                                <i class="bi bi-eye me-2"></i> View Uploaded Receipt
+                                                            </a>
+                                                        </div>
+                                                    <?php elseif ($order['order_status'] === 'pending_payment' && $order['payment_method'] === 'gcash'): ?>
+                                                        <div class="alert alert-danger mb-4">
                                                             <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                                                            <strong>GCash Payment Pending Verification.</strong> The student must submit proof of payment (min. <?php echo formatCurrency($detail_data['down_payment_due'] ?? 0); ?>) before you can update this status to 'Pending (Processing)'.
-                                                            </div>
+                                                            <strong>GCash Proof Missing.</strong> The student has not yet uploaded the receipt.
+                                                        </div>
                                                     <?php endif; ?>
                                                     
                                                     <h6>Order Items</h6>
@@ -339,8 +350,8 @@ $orders = mysqli_query($conn, $query);
                                                                     <tr>
                                                                         <td>
                                                                             <?php echo htmlspecialchars($item['product_name']); ?>
-                                                                            <?php if ($item['variant_value']): ?>
-                                                                                <small class="text-muted d-block">(<?php echo htmlspecialchars($item['variant_value']); ?>)</small>
+                                                                            <?php if (isset($item['variant_value']) && $item['variant_value']): // Display the chosen variant ?>
+                                                                                <small class="text-muted d-block">(Variant: <?php echo htmlspecialchars($item['variant_value']); ?>)</small>
                                                                             <?php endif; ?>
                                                                         </td>
                                                                         <td><?php echo formatCurrency($item['price']); ?></td>
@@ -380,8 +391,9 @@ $orders = mysqli_query($conn, $query);
                                                                 <select class="form-select" name="status" id="statusSelect<?php echo $order['order_id']; ?>" required>
                                                                     <option value="">Select Status</option>
                                                                     <?php
+                                                                    // MODIFIED: Added 'pending_payment'
                                                                     $statusOptions = [
-                                                                        'pending_payment' => 'Pending Payment',
+                                                                        'pending_payment' => 'Pending Payment (Waiting Proof)',
                                                                         'pending' => 'Pending (Processing)',
                                                                         'ready for pickup' => 'Ready for Pickup',
                                                                         'completed' => 'Completed',
@@ -391,6 +403,7 @@ $orders = mysqli_query($conn, $query);
                                                                     foreach ($statusOptions as $sKey => $sLabel) {
                                                                         if ($sKey === $current_status) continue;
                                                                         
+                                                                        // Business rules:
                                                                         // Cannot move backward from R-F-P except to Cancelled
                                                                         if ($current_status === 'ready for pickup' && in_array($sKey, ['pending', 'pending_payment'])) continue;
 
@@ -413,6 +426,11 @@ $orders = mysqli_query($conn, $query);
                                                                         Confirm Down Payment (<?php echo formatCurrency($detail_data['down_payment_due'] ?? 0); ?>) has been received and verified.
                                                                     </label>
                                                                 </div>
+                                                                <?php if (!$detail_data['payment_proof_path']): ?>
+                                                                    <p class="text-danger small mt-2 mb-0">NOTE: No proof uploaded by student yet.</p>
+                                                                <?php else: ?>
+                                                                    <p class="text-success small mt-2 mb-0">Proof is available in Order Details section.</p>
+                                                                <?php endif; ?>
                                                             </div>
                                                             <?php endif; ?>
                                                             

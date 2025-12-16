@@ -1,3 +1,5 @@
+// unineed/student/checkout.php - Full Content
+
 <?php
 // Checkout - Place Order & Deduct Stock
 require_once '../config/database.php';
@@ -47,13 +49,13 @@ foreach ($cart_items as $item) {
 // Process order submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     
-    // Default to a sensible option if the required payment method was hidden
+    // Determine payment method and option based on cart requirement
     if ($is_down_payment_required_for_cart) {
-        $payment_method = 'gcash';
+        $payment_method = 'gcash'; // Forced to GCash
         $payment_option = clean($_POST['payment_option'] ?? 'down_payment'); // Will be down_payment or full_payment
     } else {
         $payment_method = clean($_POST['payment_method'] ?? 'cash_on_pickup');
-        // If down payment is NOT required, force payment_option to full_payment for consistency in the DB logic
+        // If not required, GCash payment means full payment now. Cash means full payment on claim.
         $payment_option = $payment_method === 'gcash' ? clean($_POST['payment_option'] ?? 'full_payment') : 'full_payment';
     }
 
@@ -61,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     // *** VALIDATION LOGIC ***
     if ($is_down_payment_required_for_cart && $payment_method === 'cash_on_pickup') {
          $error = "Cash on Claim is not allowed for this order as it contains item(s) requiring an upfront down payment. Please use GCash.";
-         goto skip_db_transaction; // Jump to end of script if validation fails
+         goto skip_db_transaction;
     }
     // *** END VALIDATION LOGIC ***
 
@@ -88,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         }
     }
 
-    // Begin atomic transaction (Unchanged logic)
+    // Begin atomic transaction
     mysqli_begin_transaction($conn);
     
     try {
@@ -102,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         
         $order_id = mysqli_insert_id($conn);
         
-        // Process each cart item and deduct stock (Unchanged logic)
+        // Process each cart item and deduct stock
         foreach ($_SESSION['cart'] as $item) {
             $product_id = intval($item['product_id']);
             $quantity = intval($item['quantity']);
@@ -467,10 +469,6 @@ skip_db_transaction:
             if (method === 'cash_on_pickup') {
                 if(cashDetails) cashDetails.classList.remove('d-none');
                 if (gcashDetails) gcashDetails.classList.add('d-none'); 
-
-                // Note: The downPaymentOption and fullPaymentOption elements are conditionally rendered
-                // inside gcashDetails, so they don't need explicit JS manipulation here unless
-                // they are always present. Since they are conditionally rendered, the UI handles itself.
 
             } else if (method === 'gcash') {
                 if (cashDetails) cashDetails.classList.add('d-none');
