@@ -249,6 +249,7 @@ $orders = mysqli_query($conn, $query);
                                                     'cancelled' => 'danger'
                                                 ];
                                                 $order_status_clean = str_replace('_', ' ', $order['order_status']);
+                                                // FIX: Use null-coalescing operator to prevent "Undefined index" error on line 172
                                                 $current_badge_class = $badge_class[$order['order_status']] ?? 'secondary';
                                                 ?>
                                                 <span class="badge bg-<?php echo $current_badge_class; ?>">
@@ -282,7 +283,7 @@ $orders = mysqli_query($conn, $query);
                                                     $detail_res = mysqli_query($conn, $detail_q);
                                                     $detail_data = $detail_res ? mysqli_fetch_assoc($detail_res) : [];
                                                     
-                                                    // MODIFIED: Simplified query to rely on order_items.variant_value
+                                                    // MODIFIED: Fetch order items including the variant_value
                                                     $items_query = "SELECT oi.*, p.product_name, p.image_url, oi.variant_value 
                                                                    FROM order_items oi 
                                                                    JOIN products p ON oi.product_id = p.product_id 
@@ -350,7 +351,7 @@ $orders = mysqli_query($conn, $query);
                                                                     <tr>
                                                                         <td>
                                                                             <?php echo htmlspecialchars($item['product_name']); ?>
-                                                                            <?php if (isset($item['variant_value']) && $item['variant_value']): // Display the chosen variant ?>
+                                                                            <?php if (isset($item['variant_value']) && $item['variant_value']): ?>
                                                                                 <small class="text-muted d-block">(Variant: <?php echo htmlspecialchars($item['variant_value']); ?>)</small>
                                                                             <?php endif; ?>
                                                                         </td>
