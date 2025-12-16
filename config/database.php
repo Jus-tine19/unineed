@@ -13,6 +13,12 @@ define('DB_USER', 'root');
 define('DB_PASS', '');
 define('DB_NAME', 'unineeds');
 
+// IONOS credentials 
+// define('DB_HOST', 'db5018930086.hosting-data.io');
+// define('DB_USER', 'dbu1862993');
+// define('DB_PASS', 'bpcunineedspass.');
+// define('DB_NAME', 'dbs14922247');
+
 // Connect to DB
 $conn = mysqli_connect(DB_HOST, DB_USER, DB_PASS, DB_NAME);
 if (!$conn) {
@@ -33,6 +39,7 @@ define('DOWN_PAYMENT_PERCENTAGE', 0.20); // 20% down payment
 
 // Dynamic GCash Settings Fetch
 if ($conn) {
+    // Check if the settings table exists before querying
     $check_settings = mysqli_query($conn, "SHOW TABLES LIKE 'settings'");
     if ($check_settings && mysqli_num_rows($check_settings) > 0) {
         $gcash_settings_query = "SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('gcash_number', 'gcash_name')";
@@ -59,6 +66,8 @@ if ($conn) {
     define('GCASH_NUMBER', '09171234567');
     define('GCASH_NAME', 'UniNeeds Treasurer');
 }
+
+// --- GLOBAL FUNCTIONS ---
 
 // Check if user is logged in
 function isLoggedIn() {
@@ -87,7 +96,7 @@ function requireLogin() {
 function requireAdmin() {
     requireLogin();
     if (!isAdmin()) {
-        // Redirect to student product page
+        // Redirect to student product page since dashboard was removed
         header('Location: /unineeds/student/products.php'); 
         exit();
     }

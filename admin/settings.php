@@ -31,12 +31,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_gcash_settings
         }
         
         mysqli_commit($conn);
-        $success = "GCash settings updated successfully!";
-        // Force constants reload by redirecting or updating the current script environment
-        // For simplicity, we just rely on the next page load to get the updated values.
+        $success = "GCash settings updated successfully! (Refresh may be required to see changes)";
     } catch (Exception $e) {
         mysqli_rollback($conn);
         $error = "Error updating GCash settings: " . $e->getMessage();
+    }
+    
+    // Refresh the page to reload constants from DB
+    if ($success) {
+        header("Location: settings.php?success=gcash_updated");
+        exit();
     }
 }
 
@@ -45,9 +49,19 @@ $query = "SELECT * FROM users WHERE user_id = $user_id";
 $result = mysqli_query($conn, $query);
 $user = mysqli_fetch_assoc($result);
 
+// Check for success message after redirect
+if (isset($_GET['success']) && $_GET['success'] === 'gcash_updated') {
+    $success = "GCash settings updated successfully!";
+}
+
+
 // Fetch current GCash settings (using the constants defined in database.php)
+// These constants are loaded from the DB via database.php
 $current_gcash_number = GCASH_NUMBER;
 $current_gcash_name = GCASH_NAME;
+
+// Get the down payment rate percentage from the config
+$down_payment_rate = DOWN_PAYMENT_PERCENTAGE * 100;
 
 ?>
 <!DOCTYPE html>
@@ -96,6 +110,16 @@ $current_gcash_name = GCASH_NAME;
                             <p><strong>Full Name:</strong> <?php echo htmlspecialchars($user['full_name']); ?></p>
                             <p><strong>Email:</strong> <?php echo htmlspecialchars($user['email']); ?></p>
                             <p><strong>User Type:</strong> <span class="badge bg-primary"><?php echo ucfirst($user['user_type']); ?></span></p>
+                        </div>
+                    </div>
+                    
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-wallet2 me-2"></i>Global Financial Settings</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-0"><strong>Required Down Payment:</strong> <span class="badge bg-warning fs-6"><?php echo $down_payment_rate; ?>%</span></p>
+                            <p class="small text-muted mt-1 mb-0">This percentage is hardcoded in <code>config/database.php</code> and applies to all products requiring a down payment.</p>
                         </div>
                     </div>
                 </div>

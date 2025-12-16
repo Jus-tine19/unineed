@@ -83,7 +83,6 @@ $cart_count = isset($_SESSION['cart']) ? count($_SESSION['cart']) : 0;
                 </li>
             </ul>
         </div>
-
         <div class="user-info">
             <div class="d-flex align-items-center gap-3">
                 <div class="user-avatar">

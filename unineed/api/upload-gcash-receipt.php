@@ -1,9 +1,5 @@
-// unineed/api/upload-gcash-receipt.php
-
 <?php
 require_once '../config/database.php';
-// We don't assume external file upload helpers, relying on built-in PHP
-// require_once '../includes/image_helper.php';
 requireStudent();
 
 header('Content-Type: application/json');
