@@ -7,7 +7,7 @@ requireAdmin();
 $date_from = isset($_GET['date_from']) ? clean($_GET['date_from']) : date('Y-m-01');
 $date_to = isset($_GET['date_to']) ? clean($_GET['date_to']) : date('Y-m-d');
 
-// Sales Summary (Revenue)
+// Sales Summary (Revenue) - REMAINS
 $sales_query = "SELECT 
                 COUNT(*) as total_orders,
                 SUM(total_amount) as total_sales,
@@ -18,33 +18,7 @@ $sales_query = "SELECT
 $sales_result = mysqli_query($conn, $sales_query);
 $sales_data = mysqli_fetch_assoc($sales_result);
 
-// COGS Summary (Cost of Goods Sold)
-$tbl_cogs = mysqli_query($conn, "SHOW TABLES LIKE 'cogs'");
-if (mysqli_num_rows($tbl_cogs) === 0) {
-    $sql_cogs = @file_get_contents('../config/sql/cogs.sql');
-    if ($sql_cogs) @mysqli_query($conn, $sql_cogs);
-}
-$cogs_query = "SELECT COALESCE(SUM(total_cost),0) as total_cogs FROM cogs WHERE DATE(created_at) BETWEEN '$date_from' AND '$date_to'";
-$cogs_result = @mysqli_query($conn, $cogs_query);
-$cogs_data = $cogs_result ? mysqli_fetch_assoc($cogs_result) : ['total_cogs' => 0];
-
-// Operating Expenses Summary
-$tbl_exp = mysqli_query($conn, "SHOW TABLES LIKE 'expenses'");
-if (mysqli_num_rows($tbl_exp) === 0) {
-    $sql_e = @file_get_contents('../config/sql/expenses.sql');
-    if ($sql_e) @mysqli_query($conn, $sql_e);
-}
-$expenses_query = "SELECT COALESCE(SUM(amount),0) as total_expenses FROM expenses WHERE DATE(expense_date) BETWEEN '$date_from' AND '$date_to'";
-$expenses_result = @mysqli_query($conn, $expenses_query);
-$expenses_data = $expenses_result ? mysqli_fetch_assoc($expenses_result) : ['total_expenses' => 0];
-
-// Calculate Net Profit: Revenue - COGS - Operating Expenses
 $total_revenue = floatval($sales_data['total_sales'] ?? 0);
-$total_cogs = floatval($cogs_data['total_cogs'] ?? 0);
-$total_expenses = floatval($expenses_data['total_expenses'] ?? 0);
-$gross_profit = $total_revenue - $total_cogs;
-$net_profit = $total_revenue - $total_cogs - $total_expenses;
-$profit_margin = $total_revenue > 0 ? ($net_profit / $total_revenue * 100) : 0;
 
 // Orders by Status
 $status_query = "SELECT order_status, COUNT(*) as count 
@@ -64,6 +38,43 @@ $top_products_query = "SELECT p.product_name, SUM(oi.quantity) as total_sold, SU
                        LIMIT 10";
 $top_products = mysqli_query($conn, $top_products_query);
 
+// Total Sold by Product and Variant
+$total_sold_query = "SELECT 
+                        p.product_name, 
+                        oi.variant_value,
+                        SUM(oi.quantity) as total_sold 
+                     FROM order_items oi
+                     JOIN products p ON oi.product_id = p.product_id
+                     JOIN orders o ON oi.order_id = o.order_id
+                     WHERE DATE(o.order_date) BETWEEN '$date_from' AND '$date_to'
+                     GROUP BY p.product_id, oi.variant_value
+                     ORDER BY total_sold DESC";
+$total_sold_result = mysqli_query($conn, $total_sold_query);
+$total_sold_data = [];
+if ($total_sold_result) {
+    while($row = mysqli_fetch_assoc($total_sold_result)) {
+        $total_sold_data[] = $row;
+    }
+}
+
+
+// NEW QUERY: Pending Orders (New Orders) - Fetching all data, only displaying necessary below
+$pending_orders_query = "SELECT o.order_id, o.order_date, o.total_amount, o.order_status,
+                         u.full_name as customer_name
+                         FROM orders o
+                         LEFT JOIN users u ON o.user_id = u.user_id
+                         WHERE o.order_status IN ('pending', 'pending_payment')
+                         AND DATE(o.order_date) BETWEEN '$date_from' AND '$date_to'
+                         ORDER BY o.order_date DESC";
+$pending_orders_result = mysqli_query($conn, $pending_orders_query);
+$pending_orders_data = [];
+if ($pending_orders_result) {
+    while($row = mysqli_fetch_assoc($pending_orders_result)) {
+        $pending_orders_data[] = $row;
+    }
+}
+
+
 // Daily Sales
 $daily_sales_query = "SELECT DATE(order_date) as date, 
                       COUNT(*) as orders,
@@ -75,10 +86,11 @@ $daily_sales_query = "SELECT DATE(order_date) as date,
 $daily_sales = mysqli_query($conn, $daily_sales_query);
 
 // Detailed Order Transactions
-// FIX: Removed the non-existent 'o.payment_status' column to resolve the Fatal Error
 $detailed_orders_query = "SELECT o.order_id, o.order_date, o.total_amount, o.order_status, o.payment_method,
                           u.full_name as customer_name, u.email as customer_email,
-                          GROUP_CONCAT(CONCAT(p.product_name, ' (', oi.quantity, 'x)') SEPARATOR ', ') as items
+                          GROUP_CONCAT(CONCAT(p.product_name, 
+                          CASE WHEN oi.variant_value IS NOT NULL AND oi.variant_value != '' THEN CONCAT(' (', oi.variant_value, ')') ELSE '' END,
+                          ' - ', oi.quantity, 'x') SEPARATOR ', ') as items
                           FROM orders o
                           LEFT JOIN users u ON o.user_id = u.user_id
                           LEFT JOIN order_items oi ON o.order_id = oi.order_id
@@ -103,6 +115,25 @@ $detailed_orders = mysqli_query($conn, $detailed_orders_query);
             .main-content { margin-left: 0 !important; }
             .card { page-break-inside: avoid; }
         }
+        .stat-card {
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,.1);
+            text-align: center;
+        }
+        .stat-card .stat-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        /* Custom print function for modal content (Only necessary if you want the content to fill the page) */
+        @media print {
+            .modal-print-content {
+                position: static; /* Allows content to flow naturally */
+                width: 100%;
+                margin: 0;
+                padding: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -114,9 +145,18 @@ $detailed_orders = mysqli_query($conn, $detailed_orders_query);
                 <i class="bi bi-list fs-3"></i>
             </button>
             <h2>Business Reports & Analytics</h2>
-            <div class="ms-auto">
+            <div class="ms-auto d-flex gap-2">
+                
+                <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#pendingOrdersModal">
+                    <i class="bi bi-clock me-2"></i>View Pending Orders (<?php echo count($pending_orders_data); ?>)
+                </button>
+                
+                <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#totalItemsSoldModal">
+                    <i class="bi bi-list-ol me-2"></i>View Total Items Sold
+                </button>
+                
                 <button class="btn btn-primary" onclick="window.print()">
-                    <i class="bi bi-printer me-2"></i>Print Report
+                    <i class="bi bi-printer me-2"></i>Print Financial Report
                 </button>
             </div>
         </div>
@@ -153,136 +193,54 @@ $detailed_orders = mysqli_query($conn, $detailed_orders_query);
                 </div>
             </div>
             
-            <div class="row g-4 mb-4">
-                <div class="col-md-3">
-                    <div class="stat-card stat-success">
-                        <div class="stat-icon">
-                            <i class="bi bi-cash-stack"></i>
-                        </div>
-                        <div class="stat-info">
-                            <h3><?php echo formatCurrency($total_revenue); ?></h3>
-                            <p>Total Revenue</p>
-                            <small class="text-muted"><?php echo $sales_data['total_orders']; ?> orders</small>
-                        </div>
-                    </div>
-                </div>
+            <h4 class="mb-3 text-center">Sales Summary</h4>
+            <div class="row g-4 mb-4 justify-content-center">
                 
-                <div class="col-md-3">
-                    <div class="stat-card stat-danger">
-                        <div class="stat-icon">
-                            <i class="bi bi-calculator"></i>
+                <div class="col-lg-3 col-md-6 col-sm-6">
+                    <div class="stat-card bg-white border shadow-sm">
+                        <div class="stat-icon text-success">
+                            <i class="bi bi-graph-up-arrow"></i>
                         </div>
                         <div class="stat-info">
-                            <h3><?php echo formatCurrency($total_cogs); ?></h3>
-                            <p>Cost of Goods Sold</p>
-                            <small class="text-muted">Direct costs</small>
+                            <h3 class="text-success"><?php echo formatCurrency($total_revenue); ?></h3>
+                            <p class="mb-1">Total Revenue</p>
+                            <small class="text-muted"><?php echo $sales_data['total_orders']; ?> Orders</small>
                         </div>
                     </div>
                 </div>
-                
-                <div class="col-md-3">
-                    <div class="stat-card stat-warning">
-                        <div class="stat-icon">
-                            <i class="bi bi-receipt"></i>
-                        </div>
-                        <div class="stat-info">
-                            <h3><?php echo formatCurrency($total_expenses); ?></h3>
-                            <p>Operating Expenses</p>
-                            <small class="text-muted">Indirect costs</small>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="col-md-3">
-                    <div class="stat-card <?php echo $net_profit >= 0 ? 'stat-primary' : 'stat-danger'; ?>">
-                        <div class="stat-icon">
-                            <i class="bi bi-graph-up"></i>
-                        </div>
-                        <div class="stat-info">
-                            <h3><?php echo formatCurrency($net_profit); ?></h3>
-                            <p>Net Profit</p>
-                            <small class="<?php echo $net_profit >= 0 ? 'text-success' : 'text-danger'; ?>">
-                                <?php echo number_format($profit_margin, 2); ?>% margin
-                            </small>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            <div class="card mb-4">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0"><i class="bi bi-pie-chart me-2"></i>Profit Breakdown</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <table class="table table-sm">
-                                <tr>
-                                    <td><strong>Total Revenue</strong></td>
-                                    <td class="text-end"><strong><?php echo formatCurrency($total_revenue); ?></strong></td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-3 text-danger">Less: Cost of Goods Sold</td>
-                                    <td class="text-end text-danger">(<?php echo formatCurrency($total_cogs); ?>)</td>
-                                </tr>
-                                <tr class="table-light">
-                                    <td><strong>Gross Profit</strong></td>
-                                    <td class="text-end"><strong><?php echo formatCurrency($gross_profit); ?></strong></td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-3 text-danger">Less: Operating Expenses</td>
-                                    <td class="text-end text-danger">(<?php echo formatCurrency($total_expenses); ?>)</td>
-                                </tr>
-                                <tr class="table-primary">
-                                    <td><strong>Net Profit</strong></td>
-                                    <td class="text-end"><strong><?php echo formatCurrency($net_profit); ?></strong></td>
-                                </tr>
-                            </table>
+                <div class="col-lg-3 col-md-6 col-sm-6">
+                    <div class="stat-card bg-white border shadow-sm">
+                        <div class="stat-icon text-primary">
+                            <i class="bi bi-clipboard-check"></i>
                         </div>
-                        <div class="col-md-6">
-                            <div class="alert alert-info">
-                                <h6><i class="bi bi-info-circle me-2"></i>Formula</h6>
-                                <p class="mb-1 small"><strong>Net Profit = Revenue - COGS - Operating Expenses</strong></p>
-                                <hr>
-                                <p class="mb-1 small">Revenue: <?php echo formatCurrency($total_revenue); ?></p>
-                                <p class="mb-1 small">COGS: <?php echo formatCurrency($total_cogs); ?></p>
-                                <p class="mb-0 small">Op. Expenses: <?php echo formatCurrency($total_expenses); ?></p>
-                            </div>
+                        <div class="stat-info">
+                            <h3 class="text-primary"><?php echo formatCurrency($sales_data['completed_sales'] ?? 0); ?></h3>
+                            <p class="mb-1">Completed Sales</p>
+                            <small class="text-muted">Total Paid</small>
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <div class="row g-4 mb-4">
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h6 class="text-muted">Average Order Value</h6>
-                            <h3><?php echo formatCurrency($sales_data['avg_order_value'] ?? 0); ?></h3>
+                
+                <div class="col-lg-3 col-md-6 col-sm-6">
+                    <div class="stat-card bg-white border shadow-sm">
+                        <div class="stat-icon text-info">
+                            <i class="bi bi-currency-dollar"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 class="text-info"><?php echo formatCurrency($sales_data['avg_order_value'] ?? 0); ?></h3>
+                            <p class="mb-1">Avg. Order Value</p>
+                            <small class="text-muted">Per Order</small>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h6 class="text-muted">Gross Profit Margin</h6>
-                            <h3><?php echo $total_revenue > 0 ? number_format(($gross_profit / $total_revenue * 100), 2) : 0; ?>%</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h6 class="text-muted">Operating Expense Ratio</h6>
-                            <h3><?php echo $total_revenue > 0 ? number_format(($total_expenses / $total_revenue * 100), 2) : 0; ?>%</h3>
-                        </div>
-                    </div>
-                </div>
+                
             </div>
             
             <div class="row g-4 mb-4">
+                
                 <div class="col-md-6">
-                    <div class="card">
+                    <div class="card h-100">
                         <div class="card-header">
                             <h5 class="mb-0"><i class="bi bi-pie-chart me-2"></i>Orders by Status</h5>
                         </div>
@@ -301,6 +259,7 @@ $detailed_orders = mysqli_query($conn, $detailed_orders_query);
                                             <td>
                                                 <?php
                                                 $badge_class = [
+                                                    'pending_payment' => 'secondary',
                                                     'pending' => 'warning',
                                                     'ready for pickup' => 'info',
                                                     'completed' => 'success',
@@ -324,9 +283,9 @@ $detailed_orders = mysqli_query($conn, $detailed_orders_query);
                 </div>
                 
                 <div class="col-md-6">
-                    <div class="card">
+                    <div class="card h-100">
                         <div class="card-header">
-                            <h5 class="mb-0"><i class="bi bi-star me-2"></i>Top Selling Products</h5>
+                            <h5 class="mb-0"><i class="bi bi-star me-2"></i>Top Selling Products (Revenue)</h5>
                         </div>
                         <div class="card-body">
                             <table class="table table-sm">
@@ -445,6 +404,7 @@ $detailed_orders = mysqli_query($conn, $detailed_orders_query);
                                             <td>
                                                 <?php
                                                 $badge_class = [
+                                                    'pending_payment' => 'secondary',
                                                     'pending' => 'warning',
                                                     'ready for pickup' => 'info',
                                                     'completed' => 'success',
@@ -470,6 +430,122 @@ $detailed_orders = mysqli_query($conn, $detailed_orders_query);
         </div>
     </div>
     
+    <div class="modal fade" id="pendingOrdersModal" tabindex="-1" aria-labelledby="pendingOrdersModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header no-print">
+                    <h5 class="modal-title" id="pendingOrdersModalLabel">Pending Orders (<?php echo count($pending_orders_data); ?>)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <h4 class="text-center">Active Pending Orders Summary</h4>
+                    <p class="text-center text-muted">Period: <?php echo date('F j, Y', strtotime($date_from)); ?> to <?php echo date('F j, Y', strtotime($date_to)); ?></p>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Order ID</th>
+                                    <th>Date</th>
+                                    <th class="text-end">Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (!empty($pending_orders_data)): ?>
+                                    <?php $counter = 1; foreach ($pending_orders_data as $order): ?>
+                                        <tr>
+                                            <td><?php echo $counter++; ?></td>
+                                            <td><strong>#<?php echo str_pad($order['order_id'], 5, '0', STR_PAD_LEFT); ?></strong></td>
+                                            <td><?php echo date('M j, Y g:i A', strtotime($order['order_date'])); ?></td>
+                                            <td class="text-end fw-bold"><?php echo formatCurrency($order['total_amount']); ?></td>
+                                            <td>
+                                                <?php
+                                                $badge_class = [
+                                                    'pending_payment' => 'secondary',
+                                                    'pending' => 'warning'
+                                                ];
+                                                ?>
+                                                <span class="badge bg-<?php echo $badge_class[$order['order_status']] ?? 'secondary'; ?>">
+                                                    <?php echo ucfirst($order['order_status']); ?>
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No pending orders found in this period.</td>
+                                    </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer no-print">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-danger" onclick="printModalContent('#pendingOrdersModal')">
+                        <i class="bi bi-printer me-2"></i>Print This List
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <div class="modal fade" id="totalItemsSoldModal" tabindex="-1" aria-labelledby="totalItemsSoldModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header no-print">
+                    <h5 class="modal-title" id="totalItemsSoldModalLabel">Total Items Sold (Detailed)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <h4 class="text-center">Items Sold Summary</h4>
+                    <p class="text-center text-muted">Period: <?php echo date('F j, Y', strtotime($date_from)); ?> to <?php echo date('F j, Y', strtotime($date_to)); ?></p>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Product / Variant</th>
+                                    <th class="text-end">Total Quantity Sold</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (!empty($total_sold_data)): ?>
+                                    <?php $counter = 1; foreach ($total_sold_data as $item): ?>
+                                        <tr>
+                                            <td><?php echo $counter++; ?></td>
+                                            <td>
+                                                <strong><?php echo htmlspecialchars($item['product_name']); ?></strong>
+                                                <?php if ($item['variant_value']): ?>
+                                                    <span class="text-muted">(<?php echo htmlspecialchars($item['variant_value']); ?>)</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td class="text-end fw-bold"><?php echo $item['total_sold']; ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted">No products sold in this period.</td>
+                                    </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer no-print">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="printModalContent('#totalItemsSoldModal')">
+                        <i class="bi bi-printer me-2"></i>Print This List
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../assets/js/script.js"></script>
     <script>
@@ -490,6 +566,33 @@ $detailed_orders = mysqli_query($conn, $detailed_orders_query);
                 dateFrom.value = monthStart.toISOString().split('T')[0];
                 dateTo.value = new Date().toISOString().split('T')[0];
             }
+        }
+        
+        // Generic print function for modal content
+        function printModalContent(modalSelector) {
+            const modalContent = document.querySelector(modalSelector + ' .modal-content');
+            if (!modalContent) return;
+
+            const printWindow = window.open('', '_blank', 'height=600,width=800');
+            printWindow.document.write('<html><head><title>Report Printout</title>');
+            printWindow.document.write('<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">');
+            printWindow.document.write('<style>');
+            // Hide non-print elements
+            printWindow.document.write('@media print { .no-print { display: none !important; } }');
+            printWindow.document.write('</style>');
+            printWindow.document.write('</head><body>');
+            
+            // Write modal body content (excluding modal header/footer which have .no-print class)
+            printWindow.document.write(modalContent.querySelector('.modal-body').innerHTML);
+            
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+            
+            printWindow.focus();
+            setTimeout(() => {
+                 printWindow.print();
+                 printWindow.close();
+            }, 500);
         }
     </script>
 </body>

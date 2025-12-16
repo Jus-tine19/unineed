@@ -17,7 +17,6 @@ $result = mysqli_query($conn, $query);
 $stats['revenue'] = mysqli_fetch_assoc($result)['revenue'] ?? 0;
 
 // Pending Orders
-// MODIFIED: Include 'pending_payment' orders in the count of pending administrative actions
 $query = "SELECT COUNT(*) as pending FROM orders WHERE order_status IN ('pending', 'pending_payment')";
 $result = mysqli_query($conn, $query);
 $stats['pending_orders'] = mysqli_fetch_assoc($result)['pending'];
@@ -31,6 +30,8 @@ $stats['total_products'] = mysqli_fetch_assoc($result)['total'];
 $query = "SELECT COUNT(*) as low_stock FROM products WHERE stock_quantity <= 10 AND stock_quantity > 0 AND status = 'available'";
 $result = mysqli_query($conn, $query);
 $stats['low_stock'] = mysqli_fetch_assoc($result)['low_stock'];
+
+// REMOVED EXPENSE QUERY
 
 // Recent Orders
 $query = "SELECT o.*, u.full_name, u.email 
@@ -77,7 +78,7 @@ $monthly_sales = mysqli_query($conn, $query);
         
         <div class="content-area">
             <div class="row g-4 mb-4">
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <div class="stat-card stat-primary">
                         <div class="stat-icon">
                             <i class="bi bi-cart-check"></i>
@@ -89,7 +90,7 @@ $monthly_sales = mysqli_query($conn, $query);
                     </div>
                 </div>
                 
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <div class="stat-card stat-success">
                         <div class="stat-icon">
                             <i class="bi bi-currency-peso"></i>
@@ -101,7 +102,7 @@ $monthly_sales = mysqli_query($conn, $query);
                     </div>
                 </div>
                 
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <div class="stat-card stat-warning">
                         <div class="stat-icon">
                             <i class="bi bi-clock-history"></i>
@@ -113,18 +114,7 @@ $monthly_sales = mysqli_query($conn, $query);
                     </div>
                 </div>
                 
-                <div class="col-md-3">
-                    <div class="stat-card stat-info">
-                        <div class="stat-icon">
-                            <i class="bi bi-box-seam"></i>
-                        </div>
-                        <div class="stat-info">
-                            <h3><?php echo $stats['total_products']; ?></h3>
-                            <p>Active Products</p>
-                        </div>
-                    </div>
                 </div>
-            </div>
             
             <?php if ($stats['low_stock'] > 0): ?>
             <div class="alert alert-warning alert-dismissible fade show" role="alert">
