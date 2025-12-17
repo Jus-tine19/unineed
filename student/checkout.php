@@ -9,6 +9,16 @@ if (!isset($_SESSION['cart']) || empty($_SESSION['cart'])) {
     exit();
 }
 
+// Get selected items from POST or use all
+$selected_keys = isset($_POST['selected_items']) ? $_POST['selected_items'] : array_keys($_SESSION['cart']);
+$cart_items = array_intersect_key($_SESSION['cart'], array_flip($selected_keys));
+
+// Redirect if no items selected
+if (empty($cart_items)) {
+    header('Location: cart.php');
+    exit();
+}
+
 $user_id = $_SESSION['user_id'];
 
 // Get user details
@@ -17,7 +27,6 @@ $result = mysqli_query($conn, $query);
 $user = mysqli_fetch_assoc($result);
 
 // Calculate cart summary
-$cart_items = $_SESSION['cart'];
 $subtotal = 0;
 $total_items = 0;
 
@@ -96,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         $order_id = mysqli_insert_id($conn);
         
         // Process each cart item and deduct stock (Unchanged)
-        foreach ($_SESSION['cart'] as $item) {
+        foreach ($cart_items as $item) {
             $product_id = intval($item['product_id']);
             $quantity = intval($item['quantity']);
             $price = floatval($item['price']);
@@ -106,9 +115,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             $variant_id = null;
             $variant_value_stored = null;
             if (!empty($variants)) {
+                $variant_value_stored = json_encode($variants);
                 $variant_where = "product_id = $product_id";
                 foreach ($variants as $v_type => $v_val) {
-                    $variant_value_stored = $v_val;
                     $v_type_esc = mysqli_real_escape_string($conn, $v_type);
                     $v_val_esc = mysqli_real_escape_string($conn, $v_val);
                     $variant_where .= " AND variant_type = '$v_type_esc' AND variant_value = '$v_val_esc'";
@@ -203,8 +212,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         // Commit all changes
         mysqli_commit($conn);
         
-        // Clear cart
-        $_SESSION['cart'] = [];
+        // Remove selected items from cart
+        foreach ($selected_keys as $key) {
+            unset($_SESSION['cart'][$key]);
+        }
 
         // REDIRECTION: Redirect to order details
         header('Location: orders.php?success=1&order_id=' . $order_id);
@@ -248,6 +259,9 @@ skip_db_transaction:
             <?php endif; ?>
             
             <form method="POST" enctype="multipart/form-data">
+                <?php foreach ($selected_keys as $key): ?>
+                    <input type="hidden" name="selected_items[]" value="<?php echo htmlspecialchars($key); ?>">
+                <?php endforeach; ?>
                 <div class="row g-4">
                     <div class="col-md-8">
                         <div class="card mb-4">
@@ -346,10 +360,6 @@ skip_db_transaction:
                                 <div class="d-flex justify-content-between mb-2">
                                     <span>Subtotal (<?php echo $total_items; ?> items)</span>
                                     <span><?php echo formatCurrency($subtotal); ?></span>
-                                </div>
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span>Shipping</span>
-                                    <span class="text-success">FREE</span>
                                 </div>
                                 <hr>
                                 <div class="d-flex justify-content-between mb-3">

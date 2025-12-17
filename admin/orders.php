@@ -262,6 +262,11 @@ $orders = mysqli_query($conn, $query);
                                                     <button class="btn btn-sm btn-info btn-action" onclick="event.stopPropagation(); toggleOrderDetails(<?php echo $order['order_id']; ?>)" title="View Details">
                                                         <i class="bi bi-eye"></i>
                                                     </button>
+                                                    <?php if ($order['order_status'] === 'completed'): ?>
+                                                        <button class="btn btn-sm btn-success btn-action" onclick="event.stopPropagation();" data-bs-toggle="modal" data-bs-target="#receiptModal<?php echo $order['order_id']; ?>" title="View Receipt">
+                                                            <i class="bi bi-receipt"></i>
+                                                        </button>
+                                                    <?php endif; ?>
                                                     <?php if ($order['order_status'] !== 'completed' && $order['order_status'] !== 'cancelled'): ?>
                                                         <button class="btn btn-sm btn-primary btn-action" onclick="event.stopPropagation();" data-bs-toggle="modal" data-bs-target="#statusModal<?php echo $order['order_id']; ?>" title="Update Status">
                                                             <i class="bi bi-pencil"></i>
@@ -283,11 +288,10 @@ $orders = mysqli_query($conn, $query);
                                                     $detail_res = mysqli_query($conn, $detail_q);
                                                     $detail_data = $detail_res ? mysqli_fetch_assoc($detail_res) : [];
                                                     
-                                                    // MODIFIED: Join variants to get variant value
-                                                    $items_query = "SELECT oi.*, p.product_name, p.image_url, v.variant_value 
+                                                    // MODIFIED: Get variant value from order_items
+                                                    $items_query = "SELECT oi.*, p.product_name, p.image_url 
                                                                    FROM order_items oi 
                                                                    JOIN products p ON oi.product_id = p.product_id 
-                                                                   LEFT JOIN product_variants v ON oi.variant_id = v.variant_id
                                                                    WHERE oi.order_id = {$order['order_id']}";
                                                     $items = mysqli_query($conn, $items_query);
                                                     ?>
@@ -342,6 +346,7 @@ $orders = mysqli_query($conn, $query);
                                                             <thead>
                                                                 <tr>
                                                                     <th>Product</th>
+                                                                    <th>Variant</th>
                                                                     <th>Price</th>
                                                                     <th>Quantity</th>
                                                                     <th>Subtotal</th>
@@ -350,11 +355,22 @@ $orders = mysqli_query($conn, $query);
                                                             <tbody>
                                                                 <?php while ($item = mysqli_fetch_assoc($items)): ?>
                                                                     <tr>
+                                                                        <td><?php echo htmlspecialchars($item['product_name']); ?></td>
                                                                         <td>
-                                                                            <?php echo htmlspecialchars($item['product_name']); ?>
-                                                                            <?php if (isset($item['variant_value']) && $item['variant_value']): ?>
-                                                                                <small class="text-muted d-block">(<?php echo htmlspecialchars($item['variant_value']); ?>)</small>
-                                                                            <?php endif; ?>
+                                                                            <?php 
+                                                                            $variant_text = '';
+                                                                            if (!empty($item['variant_value'])) {
+                                                                                $decoded = json_decode($item['variant_value'], true);
+                                                                                if (is_array($decoded)) {
+                                                                                    $variant_text = implode(', ', array_map(function($type, $value) {
+                                                                                        return ucfirst($type) . ': ' . $value;
+                                                                                    }, array_keys($decoded), $decoded));
+                                                                                } else {
+                                                                                    $variant_text = $item['variant_value'];
+                                                                                }
+                                                                            }
+                                                                            echo $variant_text ? htmlspecialchars($variant_text) : '-';
+                                                                            ?>
                                                                         </td>
                                                                         <td><?php echo formatCurrency($item['price']); ?></td>
                                                                         <td><?php echo $item['quantity']; ?></td>
@@ -364,7 +380,7 @@ $orders = mysqli_query($conn, $query);
                                                             </tbody>
                                                             <tfoot>
                                                                 <tr>
-                                                                    <th colspan="3" class="text-end">Total:</th>
+                                                                    <th colspan="4" class="text-end">Total:</th>
                                                                     <th><?php echo formatCurrency($order['total_amount']); ?></th>
                                                                 </tr>
                                                             </tfoot>
@@ -443,6 +459,25 @@ $orders = mysqli_query($conn, $query);
                                                 </div>
                                             </div>
                                         </div>
+
+                                        <!-- Receipt Modal -->
+                                        <div class="modal fade" id="receiptModal<?php echo $order['order_id']; ?>" tabindex="-1">
+                                            <div class="modal-dialog modal-lg">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Order Receipt - #<?php echo str_pad($order['order_id'], 6, '0', STR_PAD_LEFT); ?></h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <iframe src="../student/receipt.php?order_id=<?php echo $order['order_id']; ?>" style="width: 100%; height: 600px; border: none;"></iframe>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                                        <button type="button" class="btn btn-primary" onclick="printReceipt(<?php echo $order['order_id']; ?>)">Print Receipt</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     <?php endwhile; ?>
                                 <?php else: ?>
                                     <tr>
@@ -514,6 +549,14 @@ $orders = mysqli_query($conn, $query);
                 }
             });
         });
+
+        // Function to print receipt
+        function printReceipt(orderId) {
+            const iframe = document.querySelector(`#receiptModal${orderId} iframe`);
+            if (iframe) {
+                iframe.contentWindow.print();
+            }
+        }
     </script>
 </body>
 </html>

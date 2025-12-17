@@ -6,11 +6,10 @@ use Dompdf\Options;
 
 // Function to format currency with peso sign
 function formatPeso($amount) {
-    // Using the HTML entity &#8369; for the Philippine Peso Sign (₱)
-    return '&#8369;' . number_format($amount, 2);
+    return '₱' . number_format($amount, 2);
 }
 
-requireStudent();
+requireLogin(); // Allow both students and admins
 
 if (!isset($_GET['order_id'])) {
     header('Location: orders.php');
@@ -28,12 +27,21 @@ if ($output_pdf) {
 $order_id = intval($_GET['order_id']);
 
 // Get order details
-$order_query = "SELECT o.*, u.full_name, u.email, u.phone 
-                FROM orders o 
-                JOIN users u ON o.user_id = u.user_id 
-                WHERE o.order_id = ? AND o.user_id = ?";
-$stmt = mysqli_prepare($conn, $order_query);
-mysqli_stmt_bind_param($stmt, "ii", $order_id, $_SESSION['user_id']);
+if (isAdmin()) {
+    $order_query = "SELECT o.*, u.full_name, u.email, u.phone 
+                    FROM orders o 
+                    JOIN users u ON o.user_id = u.user_id 
+                    WHERE o.order_id = ?";
+    $stmt = mysqli_prepare($conn, $order_query);
+    mysqli_stmt_bind_param($stmt, "i", $order_id);
+} else {
+    $order_query = "SELECT o.*, u.full_name, u.email, u.phone 
+                    FROM orders o 
+                    JOIN users u ON o.user_id = u.user_id 
+                    WHERE o.order_id = ? AND o.user_id = ?";
+    $stmt = mysqli_prepare($conn, $order_query);
+    mysqli_stmt_bind_param($stmt, "ii", $order_id, $_SESSION['user_id']);
+}
 mysqli_stmt_execute($stmt);
 $order = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
@@ -51,6 +59,12 @@ $stmt = mysqli_prepare($conn, $items_query);
 mysqli_stmt_bind_param($stmt, "i", $order_id);
 mysqli_stmt_execute($stmt);
 $items = mysqli_stmt_get_result($stmt);
+
+// Store items in array for multiple use
+$item_list = [];
+while ($item = mysqli_fetch_assoc($items)) {
+    $item_list[] = $item;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -78,7 +92,7 @@ $items = mysqli_stmt_get_result($stmt);
             color: #333;
         }
         .receipt {
-            max-width: 800px;
+            max-width: 600px;
             margin: 0 auto;
             padding: 20px;
             background: #fff;
@@ -87,7 +101,7 @@ $items = mysqli_stmt_get_result($stmt);
         
         .receipt-header {
             position: relative;
-            padding: 15px 0;
+            padding: 10px 0;
             border-bottom: 2px solid #ddd;
             margin-bottom: 10px;
             text-align: center;
@@ -111,7 +125,7 @@ $items = mysqli_stmt_get_result($stmt);
         .info-section {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             padding: 10px;
             background: #f8f9fa;
             border-radius: 8px;
@@ -123,7 +137,7 @@ $items = mysqli_stmt_get_result($stmt);
             text-align: right;
         }
         .info-section h4 {
-            color: #0066cc;
+            color: #137a21ff;
             margin-bottom: 5px;
             font-size: 12px;
         }
@@ -134,7 +148,7 @@ $items = mysqli_stmt_get_result($stmt);
             background: white;
         }
         .receipt-table th {
-            background: #0066cc;
+            background: #00cc44ff;
             color: white;
             padding: 12px;
             font-weight: 500;
@@ -157,7 +171,7 @@ $items = mysqli_stmt_get_result($stmt);
         }
         .total-amount {
             font-size: 18px;
-            color: #0066cc;
+            color: #20a706ff;
             text-align: right;
         }
         .payment-method {
@@ -166,7 +180,7 @@ $items = mysqli_stmt_get_result($stmt);
             background: #e9ecef;
             border-radius: 8px;
             text-align: center;
-            border: 1px dashed #0066cc;
+            border: 1px dashed #0f9c33ff;
         }
         .receipt-footer {
             margin-top: 10px;
@@ -187,25 +201,48 @@ $items = mysqli_stmt_get_result($stmt);
             z-index: 1000;
             white-space: nowrap;
         }
+        @media print {
+            body {
+                display: flex;
+                justify-content: center;
+                align-items: flex-start;
+            }
+            .receipt {
+                width: 104mm;
+                max-width: none;
+                margin: 1mm;
+                padding: 3mm;
+                box-shadow: none;
+                flex-shrink: 0;
+                border: 1px dashed #000;
+            }
+            .no-print {
+                display: none;
+            }
+            @page {
+                size: letter;
+                margin: 10mm;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="receipt">
-        <?php if (!$output_pdf): ?>
-        <div class="no-print mb-3">
-            <button onclick="window.print()" class="btn btn-primary">
-                <i class="bi bi-printer"></i> Print Receipt
-            </button>
-            <a href="receipt.php?order_id=<?php echo $order_id; ?>&download=pdf" class="btn btn-success">
-                <i class="bi bi-download"></i> Download PDF
-            </a>
-            <a href="orders.php" class="btn btn-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Orders
-            </a>
-        </div>
-        <?php endif; ?>
+    <?php if (!$output_pdf): ?>
+    <div class="no-print mb-3">
+        <button onclick="window.print()" class="btn btn-primary">
+            <i class="bi bi-printer"></i> Print Receipt
+        </button>
+        <a href="receipt.php?order_id=<?php echo $order_id; ?>&download=pdf" class="btn btn-success">
+            <i class="bi bi-download"></i> Download PDF
+        </a>
+        <a href="orders.php" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Orders
+        </a>
+    </div>
+    <?php endif; ?>
 
-        <div class="receipt-container">
+    <?php for ($copy = 1; $copy <= ($output_pdf ? 1 : 2); $copy++): ?>
+    <div class="receipt">
         <div class="receipt-header">
             
             <h2>UniNeeds Store</h2>
@@ -240,7 +277,7 @@ $items = mysqli_stmt_get_result($stmt);
             <tbody>
                 <?php 
                 $total = 0;
-                while ($item = mysqli_fetch_assoc($items)):
+                foreach ($item_list as $item):
                     $itemTotal = $item['price'] * $item['quantity'];
                     $total += $itemTotal;
                 ?>
@@ -252,7 +289,7 @@ $items = mysqli_stmt_get_result($stmt);
                         <td class="text-end"><?php echo formatPeso($item['price']); ?></td>
                         <td class="text-end"><?php echo formatPeso($itemTotal); ?></td>
                     </tr>
-                <?php endwhile; ?>
+                <?php endforeach; ?>
             </tbody>
         </table>
 
@@ -263,15 +300,11 @@ $items = mysqli_stmt_get_result($stmt);
         </div>
 
         <div class="payment-method">
-            <strong>Payment Method:</strong> Cash on Pickup
+            <strong>Payment Method:</strong> <?php echo $order['payment_method'] === 'gcash' ? 'GCash' : 'Cash on Pickup'; ?>
         </div>
 
-        <div class="receipt-footer">
-            <p>Thank you for shopping with UniNeeds!</p>
-            <p>This is a computer-generated receipt. No signature required.</p>
-            <p>For questions about this receipt, please contact support@unineeds.com</p>
-        </div>
     </div>
+    <?php endfor; ?>
 
     <?php if (!$output_pdf): ?>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -293,7 +326,7 @@ if ($output_pdf) {
     
     $dompdf = new Dompdf($options);
     $dompdf->loadHtml($html);
-    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->setPaper('letter', 'portrait'); // Letter size for PDF
     $dompdf->render();
     
     // Generate file name

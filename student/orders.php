@@ -165,6 +165,7 @@ if (isset($_GET['id'])) {
                                         <thead class="table-light">
                                             <tr>
                                                 <th>Product</th>
+                                                <th>Variant</th>
                                                 <th>Price</th>
                                                 <th>Quantity</th>
                                                 <th class="text-end">Subtotal</th>
@@ -187,6 +188,19 @@ if (isset($_GET['id'])) {
                                                             <strong><?php echo htmlspecialchars($item['product_name']); ?></strong>
                                                         </div>
                                                     </td>
+                                                    <td>
+                                                        <?php 
+                                                        $variants = !empty($item['variant_value']) ? json_decode($item['variant_value'], true) : null;
+                                                        if ($variants && is_array($variants)): ?>
+                                                            <small class="text-muted">
+                                                                <?php foreach ($variants as $type => $value): ?>
+                                                                    <?php echo htmlspecialchars(ucfirst($type)); ?>: <?php echo htmlspecialchars($value); ?><br>
+                                                                <?php endforeach; ?>
+                                                            </small>
+                                                        <?php else: ?>
+                                                            -
+                                                        <?php endif; ?>
+                                                    </td>
                                                     <td><?php echo formatCurrency($item['price']); ?></td>
                                                     <td><?php echo $item['quantity']; ?></td>
                                                     <td class="text-end"><?php echo formatCurrency($item['price'] * $item['quantity']); ?></td>
@@ -195,7 +209,7 @@ if (isset($_GET['id'])) {
                                         </tbody>
                                         <tfoot class="table-light">
                                             <tr>
-                                                <th colspan="3" class="text-end">Total:</th>
+                                                <th colspan="4" class="text-end">Total:</th>
                                                 <th class="text-end"><?php echo formatCurrency($order_details['total_amount']); ?></th>
                                             </tr>
                                         </tfoot>

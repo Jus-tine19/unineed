@@ -144,16 +144,6 @@ $categories = mysqli_query($conn, $categories_query);
                 <i class="bi bi-list fs-3"></i>
             </button>
             <h2>Shop Products</h2>
-            <div class="ms-auto">
-                <a href="cart.php" class="btn btn-primary position-relative">
-                    <i class="bi bi-cart3 me-2"></i>View Cart
-                    <?php if ($cart_count > 0): ?>
-                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                            <?php echo $cart_count; ?>
-                        </span>
-                    <?php endif; ?>
-                </a>
-            </div>
         </div>
         
         <div class="content-area">

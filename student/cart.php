@@ -82,6 +82,7 @@ $total = $subtotal; // No tax or shipping for now
             <?php endif; ?>
             
             <?php if (!empty($cart_items)): ?>
+                <form method="POST" action="checkout.php" id="checkout-form">
                 <div class="row g-4">
                     <!-- Cart Items -->
                     <div class="col-md-8">
@@ -98,6 +99,9 @@ $total = $subtotal; // No tax or shipping for now
                                 <?php foreach ($cart_items as $key => $item): ?>
                                     <div class="cart-item border-bottom p-3">
                                         <div class="row align-items-center">
+                                            <div class="col-auto">
+                                                <input type="checkbox" name="selected_items[]" value="<?php echo htmlspecialchars($key); ?>" class="form-check-input cart-checkbox" checked data-price="<?php echo $item['price']; ?>" data-quantity="<?php echo $item['quantity']; ?>">
+                                            </div>
                                             <div class="col-md-2">
                                                 <?php if ($item['image_path']): ?>
                                                     <?php
@@ -168,19 +172,12 @@ $total = $subtotal; // No tax or shipping for now
                                 <hr>
                                 <div class="d-flex justify-content-between mb-3">
                                     <strong>Total</strong>
-                                    <strong class="text-primary fs-4"><?php echo formatCurrency($total); ?></strong>
+                                    <strong class="text-primary fs-4" id="total-amount"><?php echo formatCurrency($total); ?></strong>
                                 </div>
                                 
-                                <div class="alert alert-info">
-                                    <i class="bi bi-info-circle me-2"></i>
-                                    <small><strong>Payment Method:</strong> Cash on Pickup</small>
-                                </div>
-                                
-                                <form method="POST" action="checkout.php">
-                                    <button type="submit" class="btn btn-success btn-lg w-100 mb-2">
-                                        <i class="bi bi-cart-check me-2"></i>Proceed to Checkout
-                                    </button>
-                                </form>
+                                <button type="submit" class="btn btn-success btn-lg w-100 mb-2">
+                                    <i class="bi bi-cart-check me-2"></i>Proceed to Checkout
+                                </button>
                                 
                                 <a href="products.php" class="btn btn-outline-secondary w-100">
                                     <i class="bi bi-arrow-left me-2"></i>Continue Shopping
@@ -201,6 +198,7 @@ $total = $subtotal; // No tax or shipping for now
                         </div>
                     </div>
                 </div>
+                </form>
             <?php else: ?>
                 <div class="empty-state">
                     <i class="bi bi-cart-x"></i>
@@ -237,6 +235,24 @@ $total = $subtotal; // No tax or shipping for now
                 input.setAttribute('readonly', 'readonly');
             });
         });
+
+        // Update total when checkboxes change
+        function updateTotal() {
+            let total = 0;
+            document.querySelectorAll('.cart-checkbox:checked').forEach(cb => {
+                const price = parseFloat(cb.getAttribute('data-price'));
+                const quantity = parseInt(cb.getAttribute('data-quantity'));
+                total += price * quantity;
+            });
+            document.getElementById('total-amount').textContent = '₱' + total.toFixed(2);
+        }
+
+        document.querySelectorAll('.cart-checkbox').forEach(cb => {
+            cb.addEventListener('change', updateTotal);
+        });
+
+        // Initial update
+        updateTotal();
     </script>
 </body>
 </html>
