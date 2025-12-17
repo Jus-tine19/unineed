@@ -7,7 +7,7 @@ requireAdmin();
 // Create upload directory if it doesn't exist
 $uploadDir = dirname(__DIR__) . '/assets/uploads/products';
 if (!file_exists($uploadDir)) {
-    mkdir($uploadDir, 0777, true);
+    mkdir($uploadDir, 0755, true);  // Instead of 0777
 }
 
 // Ensure inventory_movements table exists (used for tracking stock changes)

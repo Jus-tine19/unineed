@@ -164,6 +164,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             throw new Exception("Failed to create invoice: " . mysqli_error($conn));
         }
         
+        // Handle receipt upload for GCash
+        if ($payment_method === 'gcash' && isset($_FILES['receipt_image']) && $_FILES['receipt_image']['error'] === UPLOAD_ERR_OK) {
+            $uploadDir = '../assets/uploads/gcash_receipts';
+            if (!file_exists($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+            
+            $fileName = basename($_FILES['receipt_image']['name']);
+            $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+            $allowedExts = ['jpg', 'jpeg', 'png'];
+            
+            if (!in_array($fileExt, $allowedExts)) {
+                throw new Exception("Invalid file type. Only JPG, JPEG, and PNG allowed.");
+            }
+            
+            $newFileName = 'receipt_' . $order_id . '_' . time() . '.' . $fileExt;
+            $uploadPath = $uploadDir . '/' . $newFileName;
+            $dbPath = 'assets/uploads/gcash_receipts/' . $newFileName;
+            
+            if (move_uploaded_file($_FILES['receipt_image']['tmp_name'], $uploadPath)) {
+                // Update invoice with proof path
+                $update_q = "UPDATE invoices SET payment_proof_path = '$dbPath' WHERE order_id = $order_id";
+                if (!mysqli_query($conn, $update_q)) {
+                    throw new Exception("Failed to update invoice with proof: " . mysqli_error($conn));
+                }
+            } else {
+                throw new Exception("Failed to upload receipt image.");
+            }
+        }
+        
         // Notify admin of new order
         $message = "New order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " from " . $_SESSION['full_name'];
         $query = "INSERT INTO notifications (user_id, message, type) 
@@ -176,14 +206,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         // Clear cart
         $_SESSION['cart'] = [];
 
-        // REDIRECTION: Redirect to a dedicated Gcash confirmation page if GCash payment is selected
-        if ($payment_method === 'gcash') {
-             // Directs to order details with instruction flag
-             header('Location: orders.php?id=' . $order_id . '&payment_needed=gcash');
-        } else {
-             // Standard redirect for cash/paid orders
-             header('Location: orders.php?success=1&order_id=' . $order_id);
-        }
+        // REDIRECTION: Redirect to order details
+        header('Location: orders.php?success=1&order_id=' . $order_id);
         exit();
         
     } catch (Exception $e) {
@@ -223,7 +247,7 @@ skip_db_transaction:
                 </div>
             <?php endif; ?>
             
-            <form method="POST">
+            <form method="POST" enctype="multipart/form-data">
                 <div class="row g-4">
                     <div class="col-md-8">
                         <div class="card mb-4">
@@ -400,7 +424,7 @@ skip_db_transaction:
                                         <strong>Account Number:</strong> <?php echo htmlspecialchars($gcash_number); ?>
                                     </div>
                                     <p class="small text-danger mb-2">
-                                        **IMPORTANT:** Your order status will be 'Pending Payment' until an admin verifies your GCash transaction proof.
+                                        **IMPORTANT:** Pay via GCash first, then upload your receipt to enable placing the order.
                                     </p>
 
                                     <?php if ($is_down_payment_required_for_cart): ?>
@@ -418,12 +442,18 @@ skip_db_transaction:
                                         </label>
                                     </div>
                                     <a href="#" class="btn btn-success mt-3" id="tapToPay">Tap to Pay</a>
+                                    
+                                    <div class="mt-3">
+                                        <label for="receipt_image" class="form-label small fw-bold">Upload GCash Receipt (Required)</label>
+                                        <input type="file" class="form-control" id="receipt_image" name="receipt_image" accept="image/*" required onchange="checkReceiptUpload()">
+                                        <div class="form-text small">Upload a photo of your GCash payment receipt to proceed.</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         
                         <div class="d-grid gap-2">
-                            <button type="submit" name="place_order" class="btn btn-success btn-lg">
+                            <button type="submit" name="place_order" class="btn btn-success btn-lg" id="placeOrderBtn" <?php echo ($gcash_default_checked) ? 'disabled' : ''; ?>>
                                 <i class="bi bi-check-circle me-2"></i>Place Order
                             </button>
                             <a href="cart.php" class="btn btn-outline-secondary">
@@ -454,11 +484,31 @@ skip_db_transaction:
             document.getElementById('tapToPay').href = url;
         }
         
+        function checkReceiptUpload() {
+            const receiptInput = document.getElementById('receipt_image');
+            const placeOrderBtn = document.getElementById('placeOrderBtn');
+            const paymentMethod = document.querySelector('input[name="payment_method"]:checked').value;
+            
+            if (paymentMethod === 'gcash') {
+                receiptInput.required = true;
+                if (receiptInput.files.length > 0) {
+                    placeOrderBtn.disabled = false;
+                } else {
+                    placeOrderBtn.disabled = true;
+                }
+            } else {
+                receiptInput.required = false;
+                placeOrderBtn.disabled = false;
+            }
+        }
+        
         function togglePaymentDetails(method) {
             const cashDetails = document.getElementById('cashDetails');
             const gcashDetails = document.getElementById('gcashDetails');
             const downPaymentOption = document.getElementById('downPaymentOption');
             const fullPaymentOption = document.getElementById('fullPaymentOption');
+            const receiptInput = document.getElementById('receipt_image');
+            const placeOrderBtn = document.getElementById('placeOrderBtn');
             
             if (method === 'cash_on_pickup') {
                 cashDetails.classList.remove('d-none');
@@ -467,12 +517,18 @@ skip_db_transaction:
                 // For Cash, hide down/full options as payment is 100% on claim
                 if(downPaymentOption) downPaymentOption.checked = true;
                 if(fullPaymentOption) fullPaymentOption.disabled = true;
+                
+                receiptInput.required = false;
+                placeOrderBtn.disabled = false;
 
             } else if (method === 'gcash') {
                 if (cashDetails) cashDetails.classList.add('d-none');
                 gcashDetails.classList.remove('d-none');
                 if(fullPaymentOption) fullPaymentOption.disabled = false;
                 updateTapToPay();
+                
+                receiptInput.required = true;
+                checkReceiptUpload(); // Check if receipt is already uploaded
             }
         }
         
@@ -487,6 +543,9 @@ skip_db_transaction:
              document.querySelectorAll('input[name="payment_option"]').forEach(radio => {
                  radio.addEventListener('change', updateTapToPay);
              });
+             
+             // Add listener for receipt input
+             document.getElementById('receipt_image').addEventListener('change', checkReceiptUpload);
         });
     </script>
 </body>
