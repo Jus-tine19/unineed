@@ -83,7 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
                     'price' => $variant_price > 0 ? $variant_price : $product['price'],
                     'quantity' => $quantity,
                     'image_path' => $product['image_path'],
-                    'variants' => $variants
+                    'variants' => $variants,
+                    'requires_down_payment' => $product['requires_down_payment']
                 ];
             }
             $success = "Product added to cart!";
