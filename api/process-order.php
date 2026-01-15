@@ -1,117 +1,81 @@
 <?php
-require_once '../config/database.php';
-session_start();
-
 header('Content-Type: application/json');
+require_once '../config/database.php';
+requireStudent();
 
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    echo json_encode(['success' => false, 'message' => 'User not logged in']);
-    exit();
-}
-
-// Check if user is a student
-if ($_SESSION['user_type'] !== 'student') {
-    echo json_encode(['success' => false, 'message' => 'Only students can place orders']);
-    exit();
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    echo json_encode(['success' => false, 'message' => 'Invalid request method.']);
+    exit;
 }
 
 $user_id = $_SESSION['user_id'];
+$cart = $_SESSION['cart'] ?? [];
+$payment_method = $_POST['payment_method'] ?? 'Cash';
+$receipt_path = null;
 
-// Start transaction
+if (empty($cart)) {
+    echo json_encode(['success' => false, 'message' => 'Your cart is empty.']);
+    exit;
+}
+
+// 1. Validate GCash Receipt if applicable
+if ($payment_method === 'GCash') {
+    if (!isset($_FILES['payment_receipt']) || $_FILES['payment_receipt']['error'] !== UPLOAD_ERR_OK) {
+        echo json_encode(['success' => false, 'message' => 'Proof of payment is required for GCash orders.']);
+        exit;
+    }
+
+    $target_dir = "../uploads/receipts/";
+    if (!file_exists($target_dir)) mkdir($target_dir, 0777, true);
+
+    $file_ext = pathinfo($_FILES["payment_receipt"]["name"], PATHINFO_EXTENSION);
+    $file_name = "receipt_" . time() . "_" . $user_id . "." . $file_ext;
+    $target_file = $target_dir . $file_name;
+
+    if (move_uploaded_file($_FILES["payment_receipt"]["tmp_name"], $target_file)) {
+        $receipt_path = "uploads/receipts/" . $file_name;
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Failed to upload receipt.']);
+        exit;
+    }
+}
+
+// Calculate Total
+$total_amount = 0;
+foreach($cart as $item) {
+    $total_amount += ($item['price'] * $item['quantity']);
+}
+
 $conn->begin_transaction();
 
 try {
-    // Get cart items
-    $stmt = $conn->prepare("
-        SELECT c.*, p.price, p.stock_quantity 
-        FROM cart c 
-        JOIN products p ON c.product_id = p.product_id 
-        WHERE c.user_id = ?
-    ");
-    $stmt->bind_param("i", $user_id);
-    $stmt->execute();
-    $cart_items = $stmt->get_result();
-
-    if ($cart_items->num_rows === 0) {
-        throw new Exception('Cart is empty');
-    }
-
-    // Calculate total and validate stock
-    $total_amount = 0;
-    $items = [];
-    while ($item = $cart_items->fetch_assoc()) {
-        if ($item['quantity'] > $item['stock_quantity']) {
-            throw new Exception("Not enough stock available for some items");
-        }
-        $total_amount += $item['price'] * $item['quantity'];
-        $items[] = $item;
-    }
-
-    // Create order
-    $stmt = $conn->prepare(
-        "INSERT INTO orders (user_id, total_amount, order_status, payment_status, payment_method) 
-        VALUES (?, ?, 'pending', 'pending', 'cod')"
-    );
-    $stmt->bind_param("id", $user_id, $total_amount);
+    // 2. Create Order
+    $stmt = $conn->prepare("INSERT INTO orders (user_id, total_amount, payment_method, receipt_proof, status) VALUES (?, ?, ?, ?, 'Pending')");
+    $stmt->bind_param("idss", $user_id, $total_amount, $payment_method, $receipt_path);
     $stmt->execute();
     $order_id = $conn->insert_id;
 
-    // Prepare statements for order items and stock updates
-    $stmt_item = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
-    $stmt_update_product = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE product_id = ?");
+    // 3. Move items to order_items and deduct stock
+    foreach($cart as $id => $item) {
+        $product_id = $item['product_id'];
+        $qty = $item['quantity'];
+        $price = $item['price'];
 
-    foreach ($items as $item) {
-        error_log("process-order: Processing item - product_id={$item['product_id']}, quantity={$item['quantity']}, price={$item['price']}");
-        
-        // Add to order items
-        $stmt_item->bind_param("iiid", $order_id, $item['product_id'], $item['quantity'], $item['price']);
-        if (!$stmt_item->execute()) {
-            throw new Exception("Failed to insert order item: " . mysqli_stmt_error($stmt_item));
-        }
-        error_log("process-order: Inserted order_item for order_id={$order_id}, product_id={$item['product_id']}");
+        $item_stmt = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
+        $item_stmt->bind_param("iiid", $order_id, $product_id, $qty, $price);
+        $item_stmt->execute();
 
-        // Update product stock (decrement by quantity)
-        $stmt_update_product->bind_param("ii", $item['quantity'], $item['product_id']);
-        $success = $stmt_update_product->execute();
-        error_log("process-order: Stock update query - UPDATE products SET stock_quantity = stock_quantity - {$item['quantity']} WHERE product_id = {$item['product_id']}");
-        
-        if (!$success) {
-            error_log("process-order: FAILED - " . mysqli_stmt_error($stmt_update_product));
-            throw new Exception("Failed to update stock for product " . $item['product_id'] . ": " . mysqli_stmt_error($stmt_update_product));
-        }
-        error_log("process-order: SUCCESS - decremented product_id={$item['product_id']} by {$item['quantity']}, affected_rows=" . $stmt_update_product->affected_rows);
+        // Update Stock
+        $stock_stmt = $conn->prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
+        $stock_stmt->bind_param("ii", $qty, $product_id);
+        $stock_stmt->execute();
     }
 
-    // Clear cart
-    $stmt = $conn->prepare("DELETE FROM cart WHERE user_id = ?");
-    $stmt->bind_param("i", $user_id);
-    $stmt->execute();
-
-    // Create notification for admin
-    $stmt = $conn->prepare("
-        INSERT INTO notifications (user_id, message, type, is_read) 
-        VALUES (?, ?, 'order', 0)
-    ");
-    $message = "New order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " has been placed for ₱" . number_format($total_amount, 2);
-    $admin_id = 1; // Assuming admin user ID is 1
-    $stmt->bind_param("is", $admin_id, $message);
-    $stmt->execute();
-
-    // Commit transaction
     $conn->commit();
-
-    echo json_encode([
-        'success' => true, 
-        'message' => 'Order processed successfully',
-        'order_id' => $order_id
-    ]);
+    unset($_SESSION['cart']); // Clear cart after success
+    echo json_encode(['success' => true, 'order_id' => $order_id]);
 
 } catch (Exception $e) {
-    // Rollback transaction on error
     $conn->rollback();
-    echo json_encode([
-        'success' => false, 
-        'message' => $e->getMessage()
-    ]);
+    echo json_encode(['success' => false, 'message' => 'Order failed: ' . $e->getMessage()]);
 }
