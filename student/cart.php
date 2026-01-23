@@ -135,16 +135,16 @@ $total = $subtotal; // No tax or shipping for now
                                                 <p class="text-success fw-bold mb-0" style="font-size: 1.1rem;">₱<?php echo number_format($item['price'], 2); ?></p>
                                             </div>
                                             <div class="col-md-3">
-                                                <form method="POST" class="d-flex align-items-center gap-2">
+                                                <form method="POST" class="d-flex align-items-center gap-2 quantity-form">
                                                     <input type="hidden" name="cart_key" value="<?php echo htmlspecialchars($key); ?>">
-                                                    <button type="button" class="btn btn-outline-secondary" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;" onclick="this.nextElementSibling.stepDown(); this.form.submit();">
+                                                    <button type="button" class="btn btn-outline-secondary qty-decrease-cart" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;">
                                                         <i class="bi bi-dash"></i>
                                                     </button>
-                                                    <input type="number" name="quantity" value="<?php echo $item['quantity']; ?>" min="1" max="99" class="form-control form-control-sm text-center fw-bold" style="width: 60px; border-radius: 6px; height: 38px;" readonly>
-                                                    <button type="button" class="btn btn-outline-secondary" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;" onclick="this.previousElementSibling.stepUp(); this.form.submit();">
+                                                    <input type="number" name="quantity" value="<?php echo $item['quantity']; ?>" min="1" max="99" class="form-control form-control-sm text-center fw-bold quantity-input" style="width: 60px; border-radius: 6px; height: 38px;" readonly>
+                                                    <button type="button" class="btn btn-outline-secondary qty-increase-cart" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;">
                                                         <i class="bi bi-plus"></i>
                                                     </button>
-                                                    <button type="submit" name="update_quantity" class="btn btn-sm btn-primary d-none">Update</button>
+                                                    <button type="submit" name="update_quantity" class="d-none"></button>
                                                 </form>
                                             </div>
                                             <div class="col-md-2 text-end">
