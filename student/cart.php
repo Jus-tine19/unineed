@@ -24,7 +24,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_quantity'])) {
     
     if (isset($_SESSION['cart'][$cart_key]) && $quantity > 0) {
         $_SESSION['cart'][$cart_key]['quantity'] = $quantity;
-        $success = "Quantity updated!";
+        // Don't show success message for quantity updates - it's too frequent
+        // Just redirect to avoid form resubmission
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit;
     }
 }
 
@@ -135,16 +138,16 @@ $total = $subtotal; // No tax or shipping for now
                                                 <p class="text-success fw-bold mb-0" style="font-size: 1.1rem;">₱<?php echo number_format($item['price'], 2); ?></p>
                                             </div>
                                             <div class="col-md-3">
-                                                <form method="POST" class="d-flex align-items-center gap-2 quantity-form">
+                                                <form method="POST" class="d-flex align-items-center gap-2">
                                                     <input type="hidden" name="cart_key" value="<?php echo htmlspecialchars($key); ?>">
-                                                    <button type="button" class="btn btn-outline-secondary qty-decrease-cart" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;">
+                                                    <button type="button" class="btn btn-outline-secondary" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;" onclick="this.nextElementSibling.stepDown(); this.form.submit();">
                                                         <i class="bi bi-dash"></i>
                                                     </button>
-                                                    <input type="number" name="quantity" value="<?php echo $item['quantity']; ?>" min="1" max="99" class="form-control form-control-sm text-center fw-bold quantity-input" style="width: 60px; border-radius: 6px; height: 38px;" readonly>
-                                                    <button type="button" class="btn btn-outline-secondary qty-increase-cart" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;">
+                                                    <input type="number" name="quantity" value="<?php echo $item['quantity']; ?>" min="1" max="99" class="form-control form-control-sm text-center fw-bold" style="width: 60px; border-radius: 6px; height: 38px;" readonly>
+                                                    <button type="button" class="btn btn-outline-secondary" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;" onclick="this.previousElementSibling.stepUp(); this.form.submit();">
                                                         <i class="bi bi-plus"></i>
                                                     </button>
-                                                    <button type="submit" name="update_quantity" class="d-none"></button>
+                                                    <button type="submit" name="update_quantity" class="btn btn-sm btn-primary d-none">Update</button>
                                                 </form>
                                             </div>
                                             <div class="col-md-2 text-end">
@@ -165,52 +168,40 @@ $total = $subtotal; // No tax or shipping for now
                     
                     <!-- Order Summary -->
                     <div class="col-md-4">
-                        <div class="card" style="border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-radius: 12px; position: sticky; top: 100px;">
-                            <div class="card-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px 12px 0 0; border: none; padding: 1.5rem;">
-                                <h5 class="mb-0 fw-bold" style="font-size: 1.2rem;">
-                                    <i class="bi bi-receipt me-2"></i>Order Summary
-                                </h5>
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Order Summary</h5>
                             </div>
-                            <div class="card-body" style="padding: 1.5rem;">
-                                <div class="d-flex justify-content-between mb-3" style="padding-bottom: 1rem; border-bottom: 2px solid #f0f0f0;">
-                                    <span style="color: #666; font-weight: 500;">Subtotal (<?php echo $total_items; ?> items)</span>
-                                    <span style="color: #2c3e50; font-weight: 600;">₱<?php echo number_format($subtotal, 2); ?></span>
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Subtotal (<?php echo $total_items; ?> items)</span>
+                                    <span><?php echo formatCurrency($subtotal); ?></span>
                                 </div>
                                 
-                                <div class="d-flex justify-content-between mb-4">
-                                    <strong style="font-size: 1.1rem; color: #2c3e50;">Total</strong>
-                                    <strong class="text-success" style="font-size: 1.35rem;" id="total-amount">₱<?php echo number_format($total, 2); ?></strong>
+                                <hr>
+                                <div class="d-flex justify-content-between mb-3">
+                                    <strong>Total</strong>
+                                    <strong class="text-primary fs-4" id="total-amount"><?php echo formatCurrency($total); ?></strong>
                                 </div>
                                 
-                                <button type="submit" class="btn w-100 mb-3" style="padding: 0.9rem 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: 700; border-radius: 8px; border: none; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); font-size: 0.95rem;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.3)'">
+                                <button type="submit" class="btn btn-success btn-lg w-100 mb-2">
                                     <i class="bi bi-cart-check me-2"></i>Proceed to Checkout
                                 </button>
                                 
-                                <a href="products.php" class="btn btn-outline-secondary w-100 mb-3" style="padding: 0.9rem 1.5rem; font-weight: 600; border-radius: 8px; border: 2px solid #667eea; color: #667eea; transition: all 0.3s ease;" onmouseover="this.style.backgroundColor='#f8f9ff'; this.style.transform='translateY(-2px)'" onmouseout="this.style.backgroundColor='transparent'; this.style.transform='translateY(0)'">
+                                <a href="products.php" class="btn btn-outline-secondary w-100">
                                     <i class="bi bi-arrow-left me-2"></i>Continue Shopping
                                 </a>
                             </div>
                         </div>
                         
                         <!-- Info Card -->
-                        <div class="card" style="border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-radius: 12px; margin-top: 1.5rem;">
-                            <div class="card-body" style="padding: 1.5rem;">
-                                <h6 class="card-title mb-3 fw-bold" style="color: #2c3e50; font-size: 1rem;">
-                                    <i class="bi bi-shield-check me-2" style="color: #27ae60; font-size: 1.2rem;"></i>Safe & Secure
-                                </h6>
+                        <div class="card mt-3">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="bi bi-shield-check me-2 text-success"></i>Safe & Secure</h6>
                                 <ul class="list-unstyled small mb-0">
-                                    <li class="mb-3" style="display: flex; align-items: center;">
-                                        <i class="bi bi-check-circle" style="color: #27ae60; font-weight: bold; margin-right: 0.75rem; font-size: 1.1rem;"></i>
-                                        <span style="color: #666;">Pay cash on pickup</span>
-                                    </li>
-                                    <li class="mb-3" style="display: flex; align-items: center;">
-                                        <i class="bi bi-check-circle" style="color: #27ae60; font-weight: bold; margin-right: 0.75rem; font-size: 1.1rem;"></i>
-                                        <span style="color: #666;">Order tracking</span>
-                                    </li>
-                                    <li style="display: flex; align-items: center;">
-                                        <i class="bi bi-check-circle" style="color: #27ae60; font-weight: bold; margin-right: 0.75rem; font-size: 1.1rem;"></i>
-                                        <span style="color: #666;">Customer support</span>
-                                    </li>
+                                    <li class="mb-2"><i class="bi bi-check-circle text-success me-2"></i>Pay cash on pickup</li>
+                                    <li class="mb-2"><i class="bi bi-check-circle text-success me-2"></i>Order tracking</li>
+                                    <li class="mb-0"><i class="bi bi-check-circle text-success me-2"></i>Customer support</li>
                                 </ul>
                             </div>
                         </div>
@@ -267,6 +258,48 @@ $total = $subtotal; // No tax or shipping for now
 
         document.querySelectorAll('.cart-checkbox').forEach(cb => {
             cb.addEventListener('change', updateTotal);
+        });
+
+        // Cart quantity +/- buttons - prevent double submission
+        let isSubmitting = false;
+
+        document.querySelectorAll('.qty-decrease-cart').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (isSubmitting) return; // Prevent double submission
+                
+                const form = this.closest('.quantity-form');
+                const input = form.querySelector('.quantity-input');
+                let val = parseInt(input.value) || 1;
+                
+                if (val > 1) {
+                    val = val - 1;
+                    input.value = val;
+                    isSubmitting = true;
+                    btn.disabled = true;
+                    form.submit();
+                }
+            });
+        });
+
+        document.querySelectorAll('.qty-increase-cart').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (isSubmitting) return; // Prevent double submission
+                
+                const form = this.closest('.quantity-form');
+                const input = form.querySelector('.quantity-input');
+                let val = parseInt(input.value) || 1;
+                const max = parseInt(input.max) || 99;
+                
+                if (val < max) {
+                    val = val + 1;
+                    input.value = val;
+                    isSubmitting = true;
+                    btn.disabled = true;
+                    form.submit();
+                }
+            });
         });
 
         // Initial update
