@@ -99,6 +99,25 @@ $detailed_orders_query = "SELECT o.order_id, o.order_date, o.total_amount, o.ord
                           GROUP BY o.order_id
                           ORDER BY o.order_date DESC";
 $detailed_orders = mysqli_query($conn, $detailed_orders_query);
+
+// Pre-order items ordered in the period
+$preorder_query = "SELECT p.product_id, p.product_name, oi.variant_value, SUM(oi.quantity) as preorder_count
+                   FROM order_items oi
+                   JOIN products p ON oi.product_id = p.product_id
+                   JOIN orders o ON oi.order_id = o.order_id
+                   WHERE p.is_preorder = 1
+                   AND DATE(o.order_date) BETWEEN '$date_from' AND '$date_to'
+                   GROUP BY p.product_id, oi.variant_value
+                   ORDER BY preorder_count DESC";
+$preorder_result = mysqli_query($conn, $preorder_query);
+$preorder_total_count = 0;
+if ($preorder_result) {
+    while ($r = mysqli_fetch_assoc($preorder_result)) {
+        $preorder_total_count += intval($r['preorder_count']);
+    }
+    // rewind for rendering
+    mysqli_data_seek($preorder_result, 0);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -153,6 +172,9 @@ $detailed_orders = mysqli_query($conn, $detailed_orders_query);
                 
                 <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#totalItemsSoldModal">
                     <i class="bi bi-list-ol me-2"></i>View Total Items Sold
+                </button>
+                <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#preorderModal">
+                    <i class="bi bi-clock-history me-2"></i>Pre-order Items (<?php echo $preorder_total_count; ?>)
                 </button>
                 
                 <button class="btn btn-primary" onclick="window.print()">
@@ -546,6 +568,59 @@ $detailed_orders = mysqli_query($conn, $detailed_orders_query);
         </div>
     </div>
     
+    <div class="modal fade" id="preorderModal" tabindex="-1" aria-labelledby="preorderModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header no-print">
+                    <h5 class="modal-title" id="preorderModalLabel">Pre-order Items Ordered (<?php echo $preorder_total_count; ?>)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <h4 class="text-center">Pre-order Items Summary</h4>
+                    <p class="text-center text-muted">Period: <?php echo date('F j, Y', strtotime($date_from)); ?> to <?php echo date('F j, Y', strtotime($date_to)); ?></p>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Product / Variant</th>
+                                    <th class="text-end">Total Pre-order Quantity</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if ($preorder_result && mysqli_num_rows($preorder_result) > 0): ?>
+                                    <?php $counter = 1; while ($row = mysqli_fetch_assoc($preorder_result)): ?>
+                                        <tr>
+                                            <td><?php echo $counter++; ?></td>
+                                            <td>
+                                                <strong><?php echo htmlspecialchars($row['product_name']); ?></strong>
+                                                <?php if (!empty($row['variant_value'])): ?>
+                                                    <span class="text-muted">(<?php echo htmlspecialchars($row['variant_value']); ?>)</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td class="text-end fw-bold"><?php echo $row['preorder_count']; ?></td>
+                                        </tr>
+                                    <?php endwhile; ?>
+                                <?php else: ?>
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted">No pre-order items ordered in this period.</td>
+                                    </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer no-print">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="printModalContent('#preorderModal')">
+                        <i class="bi bi-printer me-2"></i>Print This List
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../assets/js/script.js"></script>
     <script>

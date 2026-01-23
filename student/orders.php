@@ -24,8 +24,8 @@ $orders = mysqli_query($conn, $query);
 $order_details = null;
 if (isset($_GET['id'])) {
     $order_id = intval($_GET['id']);
-    // MODIFIED QUERY: Include payment_proof_path from invoices
-    $query = "SELECT o.*, i.invoice_number, i.payment_status, i.down_payment_due, i.remaining_balance, i.payment_proof_path 
+    // MODIFIED QUERY: Include payment_proof_path and amount tracking from invoices
+    $query = "SELECT o.*, i.invoice_number, i.payment_status, i.down_payment_due, i.remaining_balance, i.payment_proof_path, i.amount_paid, i.balance_due 
               FROM orders o 
               LEFT JOIN invoices i ON o.order_id = i.order_id
               WHERE o.order_id = $order_id AND o.user_id = $user_id";
@@ -124,6 +124,54 @@ if (isset($_GET['id'])) {
                                         <?php endif; ?>
                                     </div>
                                 </div>
+
+                                <!-- Payment Breakdown Section -->
+                                <div class="card bg-light mt-4" style="display: block !important; visibility: visible !important;">
+                                    <div class="card-body" style="display: block !important;">
+                                        <h6 class="card-title mb-3"><i class="bi bi-receipt me-2"></i>Payment Breakdown</h6>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <p class="mb-2"><strong>Full Amount:</strong></p>
+                                                <p class="text-success fs-5"><strong><?php echo formatCurrency($order_details['total_amount']); ?></strong></p>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <?php 
+                                                $amount_paid = floatval($order_details['amount_paid'] ?? 0);
+                                                $balance_due = floatval($order_details['balance_due'] ?? $order_details['remaining_balance'] ?? 0);
+                                                $down_payment = floatval($order_details['down_payment_due'] ?? 0);
+                                                $total_amount = floatval($order_details['total_amount']);
+                                                
+                                                // Determine payment type based on amount paid
+                                                $payment_type = '';
+                                                if ($order_details['payment_method'] === 'gcash') {
+                                                    if ($amount_paid >= $total_amount) {
+                                                        $payment_type = ' (Full Payment via GCash)';
+                                                    } elseif ($amount_paid > 0 && $amount_paid < $total_amount) {
+                                                        $payment_type = ' (Downpayment via GCash)';
+                                                    }
+                                                } elseif ($order_details['payment_method'] === 'cash_on_pickup') {
+                                                    $payment_type = ' (Cash on Pickup)';
+                                                }
+                                                ?>
+                                                <p class="mb-2"><strong>Amount Paid:</strong></p>
+                                                <p class="text-info fs-5"><strong><?php echo formatCurrency($amount_paid); ?></strong><span class="small text-muted"><?php echo $payment_type; ?></span></p>
+                                            </div>
+                                        </div>
+                                        <?php if ($balance_due > 0): ?>
+                                            <hr class="my-3">
+                                            <div class="alert alert-warning p-3 mb-0" style="display: block !important;">
+                                                <p class="mb-2"><strong><i class="bi bi-exclamation-triangle me-2"></i>Balance Due:</strong></p>
+                                                <p class="text-danger fs-5 mb-0"><strong><?php echo formatCurrency($balance_due); ?></strong></p>
+                                                <small class="text-muted d-block mt-2">This amount must be paid when claiming your order.</small>
+                                            </div>
+                                        <?php else: ?>
+                                            <hr class="my-3">
+                                            <div class="alert alert-success p-3 mb-0">
+                                                <p class="mb-0"><i class="bi bi-check-circle me-2"></i><strong>Fully Paid!</strong> No balance due.</p>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
                                 
                                 <div class="mt-4">
                                     <h6 class="mb-3">Order Status</h6>
@@ -190,15 +238,26 @@ if (isset($_GET['id'])) {
                                                     </td>
                                                     <td>
                                                         <?php 
-                                                        $variants = !empty($item['variant_value']) ? json_decode($item['variant_value'], true) : null;
-                                                        if ($variants && is_array($variants)): ?>
+                                                        $variants = null;
+                                                        
+                                                        // Try to get variants from variant_value column
+                                                        if (!empty($item['variant_value'])) {
+                                                            $decoded = json_decode($item['variant_value'], true);
+                                                            if (is_array($decoded)) {
+                                                                $variants = $decoded;
+                                                            }
+                                                        }
+                                                        
+                                                        if ($variants && is_array($variants) && count($variants) > 0): ?>
                                                             <small class="text-muted">
                                                                 <?php foreach ($variants as $type => $value): ?>
-                                                                    <?php echo htmlspecialchars(ucfirst($type)); ?>: <?php echo htmlspecialchars($value); ?><br>
+                                                                    <span class="badge bg-light text-dark me-1 mb-1">
+                                                                        <?php echo htmlspecialchars(ucfirst($type)); ?>: <?php echo htmlspecialchars($value); ?>
+                                                                    </span><br>
                                                                 <?php endforeach; ?>
                                                             </small>
                                                         <?php else: ?>
-                                                            -
+                                                            <span class="text-muted">No variants</span>
                                                         <?php endif; ?>
                                                     </td>
                                                     <td><?php echo formatCurrency($item['price']); ?></td>
@@ -224,17 +283,27 @@ if (isset($_GET['id'])) {
                         <?php 
                         $is_gcash_order = $order_details['payment_method'] === 'gcash';
                         $is_proof_uploaded = $order_details['payment_proof_path'] && $order_details['payment_status'] === 'pending_proof';
+                        $balance_due = floatval($order_details['balance_due'] ?? $order_details['remaining_balance'] ?? 0);
                         
                         if ($is_gcash_order && !in_array($order_details['order_status'], ['completed', 'cancelled'])):
                             
                             $gcash_name = GCASH_NAME;
                             $gcash_number = GCASH_NUMBER;
-                            $amount_due = formatCurrency($order_details['down_payment_due'] ?? $order_details['total_amount']);
+                            
+                            // If balance is still due, show balance due. Otherwise show down payment due
+                            if ($balance_due > 0 && $order_details['order_status'] === 'ready for pickup') {
+                                $amount_due = formatCurrency($balance_due);
+                                $payment_type = 'Remaining Balance';
+                            } else {
+                                $amount_due = formatCurrency($order_details['down_payment_due'] ?? $order_details['total_amount']);
+                                $payment_type = 'Amount Due';
+                            }
+                            
                             $full_amount = formatCurrency($order_details['total_amount']);
                         ?>
                             <div class="card mb-3 border-<?php echo $is_proof_uploaded ? 'warning' : 'success'; ?>">
                                 <div class="card-header bg-<?php echo $is_proof_uploaded ? 'warning' : 'success'; ?> text-white">
-                                    <h6 class="mb-0"><i class="bi bi-wallet me-2"></i>Payment Required: GCash</h6>
+                                    <h6 class="mb-0"><i class="bi bi-wallet me-2"></i><?php echo htmlspecialchars($payment_type); ?>: GCash</h6>
                                 </div>
                                 <div class="card-body">
                                     
@@ -248,6 +317,32 @@ if (isset($_GET['id'])) {
                                         <p class="mb-2">Your order is placed, but requires payment confirmation before processing. **Please pay now.**</p>
                                         <h5 class="text-success">Amount Due Now (Min. 20%): <strong class="fs-4"><?php echo $amount_due; ?></strong></h5>
                                         <p class="small text-muted mb-3">Total Amount: <?php echo $full_amount; ?>. Remaining balance (if any) will be due on claim.</p>
+
+                                        <h6 class="text-muted">Payment Details:</h6>
+                                        <div class="alert alert-light p-2 small">
+                                            <strong>Account Name:</strong> <?php echo htmlspecialchars($gcash_name); ?><br>
+                                            <strong>Account Number:</strong> <?php echo htmlspecialchars($gcash_number); ?>
+                                        </div>
+                                        
+                                        <a href="tel:<?php echo htmlspecialchars($gcash_number); ?>" class="btn btn-success w-100 mb-3">
+                                            <i class="bi bi-phone me-2"></i> Tap to Pay / Open GCash App
+                                        </a>
+
+                                        <h6 class="text-muted border-top pt-3 mt-3">Upload Payment Proof</h6>
+                                        <form id="gcashReceiptForm" enctype="multipart/form-data">
+                                            <input type="hidden" name="order_id" value="<?php echo $order_details['order_id']; ?>">
+                                            <div class="mb-3">
+                                                <label for="receipt_image" class="form-label small">Upload Screenshot (JPG or PNG)</label>
+                                                <input class="form-control form-control-sm" type="file" id="receipt_image" name="receipt_image" accept="image/png, image/jpeg" required>
+                                            </div>
+                                            <button type="submit" class="btn btn-primary btn-sm w-100" id="uploadBtn">
+                                                <i class="bi bi-upload me-2"></i>Submit Proof
+                                            </button>
+                                        </form>
+                                    <?php elseif ($order_details['order_status'] === 'ready for pickup' && $balance_due > 0): // Show remaining balance payment section ?>
+                                        <p class="mb-2">Your order is ready for pickup, but you still need to pay the remaining balance.</p>
+                                        <h5 class="text-success">Balance Due: <strong class="fs-4"><?php echo $amount_due; ?></strong></h5>
+                                        <p class="small text-muted mb-3">Total Amount: <?php echo $full_amount; ?></p>
 
                                         <h6 class="text-muted">Payment Details:</h6>
                                         <div class="alert alert-light p-2 small">
@@ -306,8 +401,31 @@ if (isset($_GET['id'])) {
                                     <div class="alert alert-info">
                                         <i class="bi bi-box-seam me-2"></i>
                                         <strong>Ready for Pickup</strong>
-                                        <p class="mb-0 mt-2 small">Your order is ready! Please visit us to pick up and pay (if there is a remaining balance).</p>
+                                        <p class="mb-0 mt-2 small">Your order is ready! Please visit us to pick up.</p>
                                     </div>
+                                    
+                                    <?php 
+                                    $balance_due = floatval($order_details['balance_due'] ?? $order_details['remaining_balance'] ?? 0);
+                                    if ($balance_due > 0):
+                                    ?>
+                                        <div class="card border-danger mt-3" style="display: block !important;">
+                                            <div class="card-header bg-danger text-white">
+                                                <h6 class="mb-0"><i class="bi bi-cash-coin me-2"></i>Balance Due</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <h4 class="text-danger mb-3">₱<?php echo number_format($balance_due, 2); ?></h4>
+                                                <p class="small text-muted mb-2">You must pay the remaining balance when claiming your order.</p>
+                                                <div class="alert alert-warning alert-sm p-2 mb-0">
+                                                    <small><i class="bi bi-exclamation-triangle me-1"></i>Payment is required to complete your order.</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="alert alert-success mt-3">
+                                            <i class="bi bi-check-circle me-2"></i>
+                                            <strong>Fully Paid!</strong> You can claim your order now.
+                                        </div>
+                                    <?php endif; ?>
                                 <?php elseif ($order_details['order_status'] === 'completed'): ?>
                                     <div class="alert alert-success">
                                         <i class="bi bi-check-circle me-2"></i>

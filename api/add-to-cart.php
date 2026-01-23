@@ -16,15 +16,21 @@ if ($_SESSION['user_type'] !== 'student') {
     exit();
 }
 
-// Validate input
-if (!isset($_POST['product_id']) || !isset($_POST['quantity'])) {
+// Support JSON payloads
+$input = null;
+if (strpos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== false) {
+    $input = json_decode(file_get_contents('php://input'), true);
+}
+
+// Validate input (from JSON or form)
+$product_id = isset($input['product_id']) ? (int)$input['product_id'] : (isset($_POST['product_id']) ? (int)$_POST['product_id'] : null);
+$quantity = isset($input['quantity']) ? (int)$input['quantity'] : (isset($_POST['quantity']) ? (int)$_POST['quantity'] : null);
+$user_id = $_SESSION['user_id'];
+
+if ($product_id === null || $quantity === null) {
     echo json_encode(['success' => false, 'message' => 'Missing required parameters']);
     exit();
 }
-
-$product_id = (int)$_POST['product_id'];
-$quantity = (int)$_POST['quantity'];
-$user_id = $_SESSION['user_id'];
 
 // Validate quantity
 if ($quantity <= 0) {
@@ -32,8 +38,8 @@ if ($quantity <= 0) {
     exit();
 }
 
-// Check if product exists and has enough stock
-$stmt = $conn->prepare("SELECT stock FROM products WHERE id = ?");
+// Check if product exists and fetch stock/is_preorder
+$stmt = $conn->prepare("SELECT product_id, stock_quantity, is_preorder FROM products WHERE product_id = ? LIMIT 1");
 $stmt->bind_param("i", $product_id);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -44,9 +50,13 @@ if ($result->num_rows === 0) {
 }
 
 $product = $result->fetch_assoc();
-if ($product['stock'] < $quantity) {
-    echo json_encode(['success' => false, 'message' => 'Not enough stock available']);
-    exit();
+
+// If product is not preorder, enforce stock checks
+if (empty($product['is_preorder']) || $product['is_preorder'] == 0) {
+    if ($product['stock_quantity'] < $quantity) {
+        echo json_encode(['success' => false, 'message' => 'Not enough stock available']);
+        exit();
+    }
 }
 
 // Check if product is already in cart
@@ -60,9 +70,12 @@ if ($result->num_rows > 0) {
     $current_quantity = $result->fetch_assoc()['quantity'];
     $new_quantity = $current_quantity + $quantity;
     
-    if ($new_quantity > $product['stock']) {
-        echo json_encode(['success' => false, 'message' => 'Not enough stock available']);
-        exit();
+    // If product is not preorder, ensure new quantity doesn't exceed stock
+    if (empty($product['is_preorder']) || $product['is_preorder'] == 0) {
+        if ($new_quantity > $product['stock_quantity']) {
+            echo json_encode(['success' => false, 'message' => 'Not enough stock available']);
+            exit();
+        }
     }
 
     $stmt = $conn->prepare("UPDATE cart SET quantity = ? WHERE user_id = ? AND product_id = ?");

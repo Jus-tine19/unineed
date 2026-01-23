@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Update total and add-button state for a product
-    function updateTotalAndButton(productId, selectedPrice, availableStock) {
+    function updateTotalAndButton(productId, selectedPrice, availableStock, isPreorder = false) {
         const qtyInput = document.getElementById(`quantityInput${productId}`);
         const totalDisplay = document.getElementById(`displayTotal${productId}`);
         // Prefer modal submit button, fallback to page-level add button
@@ -17,12 +17,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const total = (parseFloat(selectedPrice) || 0) * qty;
         if (totalDisplay) totalDisplay.textContent = formatCurrency(total);
 
-        // Enable add button only if we have sufficient stock and a valid price (or no variant required)
+        // Enable add button: for preorder, always allow if price is set; for stocked items, check stock
         if (addBtn) {
-            if ((availableStock === null || availableStock === undefined) || (availableStock > 0 && qty > 0 && qty <= availableStock)) {
-                addBtn.disabled = false;
+            if (isPreorder) {
+                addBtn.disabled = (qty <= 0 || !selectedPrice);
             } else {
-                addBtn.disabled = true;
+                if ((availableStock === null || availableStock === undefined) || (availableStock > 0 && qty > 0 && qty <= availableStock)) {
+                    addBtn.disabled = false;
+                } else {
+                    addBtn.disabled = true;
+                }
             }
         }
     }
@@ -36,6 +40,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const displayPrice = document.getElementById(`displayPrice${productId}`);
             const displayStock = document.getElementById(`displayStock${productId}`);
             const variantPriceInput = document.getElementById(`variantPrice${productId}`);
+            const addBtn = document.getElementById(`modalAddBtn${productId}`);
+            
+            // Check if product is preorder
+            const isPreorder = addBtn && addBtn.closest('.modal-content') && 
+                               addBtn.closest('.modal-content').querySelector('.badge.bg-info') !== null;
 
             // Check if all variants are selected
             let allSelected = true;
@@ -49,9 +58,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     const p = parseFloat(selectedOption.dataset.price) || 0;
                     const st = parseInt(selectedOption.dataset.stock) || 0;
-                    // If multiple variant types, price might differ per option; we take the sum or the last selected depending on your pricing model.
-                    // Here we assume variant options map to a single variant row per type and the selectedPrice should be the price of the selected option combination.
-                    // Since the system stores price per variant row (type+value), for simplicity take the maximum price among selected options if multiple types exist.
                     selectedPrice = Math.max(selectedPrice, p);
                     selectedStock = Math.min(selectedStock, st);
                 }
@@ -59,20 +65,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (allSelected) {
                 displayPrice.textContent = formatCurrency(selectedPrice);
-                displayStock.textContent = `${selectedStock} units`;
+                if (displayStock) {
+                    displayStock.textContent = `${selectedStock} units`;
+                }
                 variantPriceInput.value = selectedPrice;
                 quantityInput.disabled = false;
-                quantityInput.max = selectedStock;
-                if (parseInt(quantityInput.value) > selectedStock) {
-                    quantityInput.value = selectedStock;
+                if (!isPreorder) {
+                    quantityInput.max = selectedStock;
+                    if (parseInt(quantityInput.value) > selectedStock) {
+                        quantityInput.value = selectedStock;
+                    }
                 }
-                updateTotalAndButton(productId, selectedPrice, selectedStock);
+                updateTotalAndButton(productId, selectedPrice, selectedStock, isPreorder);
             } else {
                 displayPrice.textContent = 'Select variants to see price';
-                displayStock.textContent = 'Select variants to see stock';
+                if (displayStock) {
+                    displayStock.textContent = 'Select variants to see stock';
+                }
                 variantPriceInput.value = '';
                 quantityInput.disabled = true;
-                updateTotalAndButton(productId, 0, 0);
+                updateTotalAndButton(productId, 0, 0, isPreorder);
             }
         });
     });
@@ -85,15 +97,23 @@ document.addEventListener('DOMContentLoaded', function() {
             const price = variantPriceInput && variantPriceInput.value ? parseFloat(variantPriceInput.value) : document.querySelector(`#displayPrice${productId}`) ? parseFloat(document.getElementById(`displayPrice${productId}`).textContent.replace(/[^0-9.-]+/g, '')) : 0;
             const displayStockEl = document.getElementById(`displayStock${productId}`);
             let availableStock = null;
+            let isPreorder = false;
+            
+            // Check if this is a preorder product
+            const modal = q.closest('.modal-content');
+            if (modal && modal.querySelector('.badge.bg-info')) {
+                isPreorder = true;
+            }
+            
             if (displayStockEl) {
                 const m = displayStockEl.textContent.match(/(\d+)/);
                 availableStock = m ? parseInt(m[0]) : null;
             }
             // Clamp quantity to min/max
-            const max = parseInt(this.max) || availableStock || 9999;
+            const max = isPreorder ? 9999 : (parseInt(this.max) || availableStock || 9999);
             if (parseInt(this.value) > max) this.value = max;
             if (parseInt(this.value) < 1 || !this.value) this.value = 1;
-            updateTotalAndButton(productId, price, availableStock);
+            updateTotalAndButton(productId, price, availableStock, isPreorder);
         });
     });
 
@@ -132,7 +152,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const displayStock = document.getElementById(`displayStock${productId}`);
             const quantityInput = document.getElementById(`quantityInput${productId}`);
             const totalDisplay = document.getElementById(`displayTotal${productId}`);
-            const addBtn = document.getElementById(`addToCartBtn${productId}`);
+            const addBtn = document.getElementById(`modalAddBtn${productId}`);
+            
+            // Check if product is preorder by looking for badge
+            const isPreorder = this.querySelector('.badge.bg-info') !== null;
 
             // If there are no variant selects, set base price and stock from server-rendered values
             const variantSelects = document.querySelectorAll(`select[data-product-id="${productId}"]`);
@@ -143,7 +166,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     // ensure total is correct
                     const basePriceText = displayPrice ? displayPrice.textContent : '0';
                     const basePrice = parseFloat((basePriceText || '').replace(/[^0-9.-]+/g, '')) || 0;
-                    updateTotalAndButton(productId, basePrice, parseInt((displayStock && displayStock.textContent.match(/(\d+)/)) ? displayStock.textContent.match(/(\d+)/)[0] : null));
+                    const availableStock = displayStock ? (displayStock.textContent.match(/(\d+)/) ? parseInt(displayStock.textContent.match(/(\d+)/)[0]) : null) : null;
+                    updateTotalAndButton(productId, basePrice, availableStock, isPreorder);
                 }
                 return;
             }

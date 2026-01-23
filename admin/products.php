@@ -10,6 +10,12 @@ if (!file_exists($uploadDir)) {
     mkdir($uploadDir, 0755, true);  // Instead of 0777
 }
 
+// Ensure products table has `is_preorder` column (adds column if missing)
+$col_check = mysqli_query($conn, "SHOW COLUMNS FROM products LIKE 'is_preorder'");
+if ($col_check && mysqli_num_rows($col_check) === 0) {
+    @mysqli_query($conn, "ALTER TABLE products ADD COLUMN is_preorder TINYINT(1) DEFAULT 0 AFTER requires_down_payment");
+}
+
 // Ensure inventory_movements table exists (used for tracking stock changes)
 $table_check = mysqli_query($conn, "SHOW TABLES LIKE 'inventory_movements'");
 if ($table_check && mysqli_num_rows($table_check) === 0) {
@@ -30,6 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // ADDED: Down Payment Checkbox
         $requires_down_payment = isset($_POST['requires_down_payment']) ? 1 : 0;
+        // NEW: Pre-order / Made-to-order Checkbox
+        $is_preorder = isset($_POST['is_preorder']) ? 1 : 0;
         
         // Check if we have variants
         $has_variants = isset($_POST['variant_types']) && is_array($_POST['variant_types']) && !empty(array_filter($_POST['variant_types']));
@@ -48,13 +56,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (isset($_POST['variant_stocks']) && is_array($_POST['variant_stocks'])) {
                 foreach ($_POST['variant_stocks'] as $vstock) {
-                    $stock_quantity += intval($vstock); // Sum all variant stocks
+                    // If product is preorder, variant stock is irrelevant
+                    $stock_quantity += $is_preorder ? 0 : intval($vstock);
                 }
             }
         } else {
             // No variants - use base price and stock from form
             $base_price = floatval(clean($_POST['price']));
-            $stock_quantity = intval(clean($_POST['stock_quantity']));
+            $stock_quantity = $is_preorder ? 0 : intval(clean($_POST['stock_quantity']));
         }
         
         // Handle image upload if provided
@@ -96,9 +105,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (isset($_POST['add_product'])) {
             // UPDATED: Added requires_down_payment column to INSERT query
-            $query = "INSERT INTO products (product_name, description, category, price, stock_quantity, image_path, primary_color, secondary_color, accent_color, status, requires_down_payment) 
+            $query = "INSERT INTO products (product_name, description, category, price, stock_quantity, image_path, primary_color, secondary_color, accent_color, status, requires_down_payment, is_preorder) 
                      VALUES ('$product_name', '$description', '$category', $base_price, $stock_quantity, " . 
-                     ($image_path ? "'$image_path'" : "NULL") . ", '$primary_color', '$secondary_color', '$accent_color', '$status', $requires_down_payment)";
+                     ($image_path ? "'$image_path'" : "NULL") . ", '$primary_color', '$secondary_color', '$accent_color', '$status', $requires_down_payment, $is_preorder)";
             $message = "Product added successfully!";
         } else {
             $product_id = clean($_POST['product_id']);
@@ -111,7 +120,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      stock_quantity = $stock_quantity,
                      " . ($image_path ? "image_path = '$image_path'," : "") . "
                      status = '$status',
-                     requires_down_payment = $requires_down_payment
+                     requires_down_payment = $requires_down_payment,
+                     is_preorder = $is_preorder
                      WHERE product_id = $product_id";
             $message = "Product updated successfully!";
         }
@@ -138,10 +148,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (!empty($variant_type_base) && is_array($values)) {
                     foreach ($values as $i => $value) {
-                         // Check if this index exists in all arrays before proceeding
-                        if (isset($prices[$i]) && isset($stocks[$i])) {
+                        // For preorder products, price is required but stock is optional (default to 0)
+                        // For regular products, both price and stock are required
+                        if (isset($prices[$i])) {
                             $variant_price = floatval($prices[$i]);
-                            $variant_stock = intval($stocks[$i]);
+                            // For preorder, stock defaults to 0; for regular products use provided value
+                            $variant_stock = $is_preorder ? 0 : intval($stocks[$i] ?? 0);
                             
                             // FIX: Only call clean() if the variable is a string. If it's an array 
                             // or null due to form structure, it's skipped or defaults to an empty string.
@@ -166,56 +178,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             if (!isset($error)) {
-                // Record inventory movements
-                // Product-level movement
-                if (isset($_POST['add_product'])) {
-                    // initial product stock
-                    if ($stock_quantity > 0) {
-                        $reason = $has_variants ? 'Initial stock from variants' : 'Initial stock on product creation';
-                        $mq = "INSERT INTO inventory_movements (product_id, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) VALUES ($product_id, $stock_quantity, 0, $stock_quantity, 'add', '$reason', " . intval($_SESSION['user_id']) . ")";
-                        @mysqli_query($conn, $mq);
-                    }
-                    // initial variant stocks
-                    if ($has_variants && !empty($new_variants)) {
-                        foreach ($new_variants as $vkey => $vstock) {
-                            list($vtype, $vvalue) = explode('|', $vkey, 2);
-                            $reason = "Initial variant stock: " . mysqli_real_escape_string($conn, $vtype) . "=" . mysqli_real_escape_string($conn, $vvalue);
-                            $mq = "INSERT INTO inventory_movements (product_id, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) VALUES ($product_id, $vstock, 0, $vstock, 'add', '" . mysqli_real_escape_string($conn, $reason) . "', " . intval($_SESSION['user_id']) . ")";
+                // Record inventory movements unless product is preorder (made-to-order)
+                if (!$is_preorder) {
+                    // Product-level movement
+                    if (isset($_POST['add_product'])) {
+                        // initial product stock
+                        if ($stock_quantity > 0) {
+                            $reason = $has_variants ? 'Initial stock from variants' : 'Initial stock on product creation';
+                            $mq = "INSERT INTO inventory_movements (product_id, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) VALUES ($product_id, $stock_quantity, 0, $stock_quantity, 'add', '$reason', " . intval($_SESSION['user_id']) . ")";
                             @mysqli_query($conn, $mq);
                         }
-                    }
-                } else {
-                    // edit product - record product stock delta
-                    $delta = $stock_quantity - $old_stock;
-                    if ($delta != 0) {
-                        $mtype = $delta > 0 ? 'add' : 'subtract';
-                        $reason = $has_variants ? 'Product stock updated from variants' : 'Product stock updated via edit';
-                        $mq = "INSERT INTO inventory_movements (product_id, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) VALUES ($product_id, $delta, $old_stock, $stock_quantity, '$mtype', '$reason', " . intval($_SESSION['user_id']) . ")";
-                        @mysqli_query($conn, $mq);
-                    }
-
-                    // variant-level movements: compare old_variants and new_variants
-                    if (!empty($old_variants) || !empty($new_variants)) {
-                        // additions or diffs
-                        foreach ($new_variants as $vkey => $vstock) {
-                            $prev = isset($old_variants[$vkey]) ? intval($old_variants[$vkey]) : 0;
-                            $delta = $vstock - $prev;
-                            if ($delta != 0) {
+                        // initial variant stocks
+                        if ($has_variants && !empty($new_variants)) {
+                            foreach ($new_variants as $vkey => $vstock) {
                                 list($vtype, $vvalue) = explode('|', $vkey, 2);
-                                $reason = 'Variant ' . mysqli_real_escape_string($conn, $vtype) . '=' . mysqli_real_escape_string($conn, $vvalue) . ' stock update';
-                                $mtype = $delta > 0 ? 'add' : 'subtract';
-                                $mq = "INSERT INTO inventory_movements (product_id, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) VALUES ($product_id, $delta, $prev, $vstock, '$mtype', '" . mysqli_real_escape_string($conn, $reason) . "', " . intval($_SESSION['user_id']) . ")";
+                                $reason = "Initial variant stock: " . mysqli_real_escape_string($conn, $vtype) . "=" . mysqli_real_escape_string($conn, $vvalue);
+                                $mq = "INSERT INTO inventory_movements (product_id, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) VALUES ($product_id, $vstock, 0, $vstock, 'add', '" . mysqli_real_escape_string($conn, $reason) . "', " . intval($_SESSION['user_id']) . ")";
                                 @mysqli_query($conn, $mq);
                             }
                         }
-                        // removals: old variants not present in new set
-                        foreach ($old_variants as $ok => $oprev) {
-                            if (!isset($new_variants[$ok]) && $oprev > 0) {
-                                list($vtype, $vvalue) = explode('|', $ok, 2);
-                                $reason = 'Variant ' . mysqli_real_escape_string($conn, $vtype) . '=' . mysqli_real_escape_string($conn, $vvalue) . ' removed';
-                                $delta = 0 - $oprev;
-                                $mq = "INSERT INTO inventory_movements (product_id, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) VALUES ($product_id, $delta, $oprev, 0, 'subtract', '" . mysqli_real_escape_string($conn, $reason) . "', " . intval($_SESSION['user_id']) . ")";
-                                @mysqli_query($conn, $mq);
+                    } else {
+                        // edit product - record product stock delta
+                        $delta = $stock_quantity - $old_stock;
+                        if ($delta != 0) {
+                            $mtype = $delta > 0 ? 'add' : 'subtract';
+                            $reason = $has_variants ? 'Product stock updated from variants' : 'Product stock updated via edit';
+                            $mq = "INSERT INTO inventory_movements (product_id, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) VALUES ($product_id, $delta, $old_stock, $stock_quantity, '$mtype', '$reason', " . intval($_SESSION['user_id']) . ")";
+                            @mysqli_query($conn, $mq);
+                        }
+
+                        // variant-level movements: compare old_variants and new_variants
+                        if (!empty($old_variants) || !empty($new_variants)) {
+                            // additions or diffs
+                            foreach ($new_variants as $vkey => $vstock) {
+                                $prev = isset($old_variants[$vkey]) ? intval($old_variants[$vkey]) : 0;
+                                $delta = $vstock - $prev;
+                                if ($delta != 0) {
+                                    list($vtype, $vvalue) = explode('|', $vkey, 2);
+                                    $reason = 'Variant ' . mysqli_real_escape_string($conn, $vtype) . '=' . mysqli_real_escape_string($conn, $vvalue) . ' stock update';
+                                    $mtype = $delta > 0 ? 'add' : 'subtract';
+                                    $mq = "INSERT INTO inventory_movements (product_id, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) VALUES ($product_id, $delta, $prev, $vstock, '$mtype', '" . mysqli_real_escape_string($conn, $reason) . "', " . intval($_SESSION['user_id']) . ")";
+                                    @mysqli_query($conn, $mq);
+                                }
+                            }
+                            // removals: old variants not present in new set
+                            foreach ($old_variants as $ok => $oprev) {
+                                if (!isset($new_variants[$ok]) && $oprev > 0) {
+                                    list($vtype, $vvalue) = explode('|', $ok, 2);
+                                    $reason = 'Variant ' . mysqli_real_escape_string($conn, $vtype) . '=' . mysqli_real_escape_string($conn, $vvalue) . ' removed';
+                                    $delta = 0 - $oprev;
+                                    $mq = "INSERT INTO inventory_movements (product_id, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) VALUES ($product_id, $delta, $oprev, 0, 'subtract', '" . mysqli_real_escape_string($conn, $reason) . "', " . intval($_SESSION['user_id']) . ")";
+                                    @mysqli_query($conn, $mq);
+                                }
                             }
                         }
                     }
@@ -279,6 +293,7 @@ if (isset($_POST['delete_product'])) {
 // Get all products with variant price and stock information
 $query = "SELECT p.*,
           p.requires_down_payment, /* ADDED: Fetch the down payment requirement status */
+          p.is_preorder,
           NULLIF(MIN(v.price), 0) as min_variant_price,
           NULLIF(MAX(v.price), 0) as max_variant_price,
           COUNT(v.variant_id) as variant_count,
@@ -398,6 +413,9 @@ $down_payment_rate = DOWN_PAYMENT_PERCENTAGE * 100;
                                                     <span class="badge bg-success">Available</span>
                                                 <?php else: ?>
                                                     <span class="badge bg-danger">Unavailable</span>
+                                                <?php endif; ?>
+                                                <?php if (isset($product['is_preorder']) && $product['is_preorder'] == 1): ?>
+                                                    <br><span class="badge bg-info mt-1">Pre-order / Made-to-order</span>
                                                 <?php endif; ?>
                                             </td>
                                             <td>
@@ -553,12 +571,20 @@ $down_payment_rate = DOWN_PAYMENT_PERCENTAGE * 100;
                                                                 
                                                                 <?php 
                                                                     $is_required = $product['requires_down_payment'] == 1 ? 'checked' : '';
+                                                                    $is_preorder_checked = isset($product['is_preorder']) && $product['is_preorder'] == 1 ? 'checked' : '';
                                                                 ?>
                                                                 <div class="col-md-6">
                                                                     <label class="form-label">Down Payment</label>
                                                                     <div class="form-check form-switch mt-2">
                                                                         <input class="form-check-input" type="checkbox" role="switch" id="requiresDownPaymentEdit<?php echo $product['product_id']; ?>" name="requires_down_payment" value="1" <?php echo $is_required; ?>>
                                                                         <label class="form-check-label" for="requiresDownPaymentEdit<?php echo $product['product_id']; ?>">Requires <?php echo $down_payment_rate; ?>% Down Payment (GCash Only)</label>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <label class="form-label">Availability</label>
+                                                                    <div class="form-check form-switch mt-2">
+                                                                        <input class="form-check-input" type="checkbox" role="switch" id="isPreorderEdit<?php echo $product['product_id']; ?>" name="is_preorder" value="1" <?php echo $is_preorder_checked; ?>>
+                                                                        <label class="form-check-label" for="isPreorderEdit<?php echo $product['product_id']; ?>">Pre-order / Made-to-order (item not stocked)</label>
                                                                     </div>
                                                                 </div>
                                                                 <div class="col-12">
@@ -676,6 +702,13 @@ $down_payment_rate = DOWN_PAYMENT_PERCENTAGE * 100;
                                 </div>
                             </div>
                             <div class="col-md-6">
+                                <label class="form-label">Availability</label>
+                                <div class="form-check form-switch mt-2">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="isPreorderAdd" name="is_preorder" value="1">
+                                    <label class="form-check-label" for="isPreorderAdd">Pre-order / Made-to-order (item not stocked)</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label">Product Image</label>
                                 <input type="file" class="form-control" name="product_image" accept="image/*" onchange="previewImage(this)">
                                 <small class="text-muted">Upload product image (JPG, PNG, GIF max 5MB)</small>
@@ -690,23 +723,7 @@ $down_payment_rate = DOWN_PAYMENT_PERCENTAGE * 100;
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-12" id="colorPalette" style="display:none;">
-                                <label class="form-label">Color Palette</label>
-                                <div class="d-flex gap-2 mb-2">
-                                    <div class="color-box primary-color">
-                                        <div class="color-preview rounded" style="width:50px;height:50px;"></div>
-                                        <small class="d-block text-muted">Primary</small>
-                                    </div>
-                                    <div class="color-box secondary-color">
-                                        <div class="color-preview rounded" style="width:50px;height:50px;"></div>
-                                        <small class="d-block text-muted">Secondary</small>
-                                    </div>
-                                    <div class="color-box accent-color">
-                                        <div class="color-preview rounded" style="width:50px;height:50px;"></div>
-                                        <small class="d-block text-muted">Accent</small>
-                                    </div>
-                                </div>
-                            </div>
+                            
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -744,9 +761,102 @@ $down_payment_rate = DOWN_PAYMENT_PERCENTAGE * 100;
                     if (typeof checkVariantFieldsEdit === 'function') {
                         checkVariantFieldsEdit(productId);
                     }
+                    // Toggle stock fields based on preorder checkbox state
+                    const preorderCheckbox = document.getElementById('isPreorderEdit' + productId);
+                    const stockContainer = document.getElementById('baseStockContainer' + productId);
+                    if (preorderCheckbox && stockContainer) {
+                        const toggleVariantStocks = function(containerEl, disable) {
+                            containerEl.querySelectorAll('input[name="variant_stocks[]"]').forEach(i => {
+                                // Don't disable - just hide and set value to 0
+                                // Disabled fields won't be submitted in form data
+                                if (disable) {
+                                    i.value = 0;
+                                }
+                                const col = i.closest('.col-md-3');
+                                if (col) col.style.display = disable ? 'none' : '';
+                            });
+                        };
+
+                        const togglePreorderEdit = function() {
+                            const checked = preorderCheckbox.checked;
+                            if (checked) {
+                                stockContainer.style.display = 'none';
+                                toggleVariantStocks(modal, true);
+                                // For edit modal, update stock required status
+                                modal.querySelectorAll('input[name="variant_stocks[]"]').forEach(input => {
+                                    input.removeAttribute('required');
+                                    input.value = 0;
+                                });
+                            } else {
+                                stockContainer.style.display = '';
+                                toggleVariantStocks(modal, false);
+                            }
+                        };
+
+                        // initialize
+                        togglePreorderEdit();
+                        preorderCheckbox.addEventListener('change', togglePreorderEdit);
+
+                        // Observe added variant rows so newly added variant stock inputs get disabled when preorder is active
+                        const editObserver = new MutationObserver(function() {
+                            if (preorderCheckbox.checked) toggleVariantStocks(modal, true);
+                        });
+                        editObserver.observe(modal, { childList: true, subtree: true });
+                        modal.addEventListener('hidden.bs.modal', function() { editObserver.disconnect(); });
+                    }
                 });
              }
         });
+
+        // Handle Add modal preorder toggle
+        const addModalEl = document.getElementById('addProductModal');
+        if (addModalEl) {
+            addModalEl.addEventListener('shown.bs.modal', function() {
+                const preorderAdd = document.getElementById('isPreorderAdd');
+                const baseStockAdd = document.getElementById('baseStockFieldAdd');
+                const toggleVariantStocksAdd = function(disable) {
+                    document.querySelectorAll('#addProductModal input[name="variant_stocks[]"]').forEach(i => {
+                        // Don't disable - just hide and set value to 0
+                        // Disabled fields won't be submitted in form data
+                        if (disable) {
+                            i.value = 0;
+                        }
+                        const col = i.closest('.col-md-3');
+                        if (col) col.style.display = disable ? 'none' : '';
+                    });
+                };
+
+                const togglePreorderAdd = function() {
+                    if (!preorderAdd || !baseStockAdd) return;
+                    if (preorderAdd.checked) {
+                        baseStockAdd.style.display = 'none';
+                        toggleVariantStocksAdd(true);
+                        if (typeof updateVariantStockRequiredStatus === 'function') {
+                            updateVariantStockRequiredStatus();
+                        }
+                    } else {
+                        baseStockAdd.style.display = '';
+                        toggleVariantStocksAdd(false);
+                        if (typeof updateVariantStockRequiredStatus === 'function') {
+                            updateVariantStockRequiredStatus();
+                        }
+                    }
+                };
+                // initialize and listen
+                togglePreorderAdd();
+                if (preorderAdd) preorderAdd.addEventListener('change', togglePreorderAdd);
+
+                // Observe variantTypes container for dynamic additions
+                const variantTypesContainer = document.getElementById('variantTypes');
+                if (variantTypesContainer) {
+                    const addObserver = new MutationObserver(function() {
+                        if (preorderAdd && preorderAdd.checked) toggleVariantStocksAdd(true);
+                    });
+                    addObserver.observe(variantTypesContainer, { childList: true, subtree: true });
+                    addModalEl.addEventListener('hidden.bs.modal', function() { addObserver.disconnect(); });
+                }
+            });
+        }
     });
     </script>
 </body>

@@ -88,17 +88,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                 $qty = $item['quantity'];
                 $price = $item['price'];
                 
-                // Insert Item
-                mysqli_query($conn, "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES ($order_id, $p_id, $qty, $price)");
+                // Prepare variants as JSON if they exist
+                $variants_json = null;
+                if (!empty($item['variants']) && is_array($item['variants'])) {
+                    $variants_json = json_encode($item['variants']);
+                    $variants_json = mysqli_real_escape_string($conn, $variants_json);
+                }
                 
-                // Deduct Stock
-                mysqli_query($conn, "UPDATE products SET stock_quantity = stock_quantity - $qty WHERE product_id = $p_id");
+                // Insert Item with variants
+                if (!empty($variants_json)) {
+                    mysqli_query($conn, "INSERT INTO order_items (order_id, product_id, quantity, price, variant_value) VALUES ($order_id, $p_id, $qty, $price, '$variants_json')");
+                } else {
+                    mysqli_query($conn, "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES ($order_id, $p_id, $qty, $price)");
+                }
+                
+                // Deduct Stock only for stocked items (skip for pre-order/made-to-order)
+                $prod_check = mysqli_query($conn, "SELECT is_preorder FROM products WHERE product_id = $p_id LIMIT 1");
+                $prod_row = $prod_check ? mysqli_fetch_assoc($prod_check) : null;
+                if (empty($prod_row['is_preorder']) || $prod_row['is_preorder'] == 0) {
+                    mysqli_query($conn, "UPDATE products SET stock_quantity = stock_quantity - $qty WHERE product_id = $p_id");
+                }
             }
 
             // 3. Create Invoice
             $inv_num = 'INV-' . date('Ymd') . '-' . str_pad($order_id, 6, '0', STR_PAD_LEFT);
-            $q_inv = "INSERT INTO invoices (order_id, invoice_number, payment_status, down_payment_due, remaining_balance) 
-                      VALUES ($order_id, '$inv_num', '$payment_status', $down_payment_amount, $remaining_balance)";
+            
+            // Calculate amounts based on payment option
+            $amount_paid = 0;
+            $balance_due = $total;
+            
+            if ($payment_method === 'gcash') {
+                if ($payment_option === 'full_payment') {
+                    $amount_paid = $total;
+                    $balance_due = 0;
+                } else {
+                    // Down payment - calculate 20% of total
+                    $amount_paid = $down_payment_amount;
+                    $balance_due = $remaining_balance;
+                }
+            } else {
+                // Cash on Pickup - no payment yet
+                $amount_paid = 0;
+                $balance_due = $total;
+            }
+            
+            $q_inv = "INSERT INTO invoices (order_id, invoice_number, payment_status, amount_paid, balance_due, down_payment_due, remaining_balance) 
+                      VALUES ($order_id, '$inv_num', '$payment_status', $amount_paid, $balance_due, $down_payment_amount, $remaining_balance)";
             mysqli_query($conn, $q_inv);
 
             // 4. Handle GCash Receipt
@@ -199,9 +234,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                                                 <td class="ps-3">
                                                     <div class="d-flex align-items-center">
                                                         <?php 
-                                                            $img = !empty($item['image_path']) ? '../' . $item['image_path'] : '../assets/images/no-image.png';
+                                                            $img = '';
+                                                            if (!empty($item['image_path'])) {
+                                                                $img = $item['image_path'];
+                                                                // Add ../ prefix if not already absolute or relative with ../
+                                                                if (!preg_match('/^(https?:)?\\/\\//i', $img) && strpos($img, '/') !== 0 && strpos($img, '../') !== 0) {
+                                                                    $img = '../' . ltrim($img, '/');
+                                                                }
+                                                            } elseif (!empty($item['image_url'])) {
+                                                                $img = $item['image_url'];
+                                                            } else {
+                                                                $img = '../assets/images/no-image.png';
+                                                            }
                                                         ?>
-                                                        <img src="<?php echo $img; ?>" class="product-img-checkout me-3 border">
+                                                        <img src="<?php echo htmlspecialchars($img); ?>" class="product-img-checkout me-3 border" alt="<?php echo htmlspecialchars($item['product_name']); ?>">
                                                         <div>
                                                             <div class="fw-bold"><?php echo htmlspecialchars($item['product_name']); ?></div>
                                                             <?php if (!empty($item['variants'])): ?>
@@ -254,13 +300,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                                     </div>
 
                                     <h6 class="text-center text-success mb-2 small fw-bold">SCAN TO PAY VIA GCASH</h6>
-                                    <div class="qr-display-box shadow-sm mb-3">
+                                    <div class="qr-display-box shadow-sm mb-3" id="qrDisplayBox">
                                         <?php if ($gcash_qr_image): ?>
-                                            <img src="../<?php echo $gcash_qr_image; ?>?t=<?php echo time(); ?>" class="img-fluid rounded" alt="GCash QR">
+                                            <img src="../<?php echo $gcash_qr_image; ?>?t=<?php echo time(); ?>" class="img-fluid rounded" alt="GCash QR" id="qrImage">
                                         <?php else: ?>
                                             <div class="text-center py-4"><i class="bi bi-qr-code fs-1 text-muted"></i><p class="small text-muted">No QR Available</p></div>
                                         <?php endif; ?>
                                     </div>
+                                    <?php if ($gcash_qr_image): ?>
+                                    <button type="button" class="btn btn-outline-success btn-sm w-100 mb-3" onclick="downloadQRCode()">
+                                        <i class="bi bi-download me-2"></i>Download QR Code
+                                    </button>
+                                    <?php endif; ?>
                                     
                                     <div class="mb-3 small">
                                         <strong>Account Name:</strong> <?php echo htmlspecialchars($gcash_name); ?><br>
@@ -272,7 +323,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                                 </div>
 
                                 <hr>
-                                <div class="d-flex justify-content-between mb-3"><span>Total Due:</span> <h4 class="text-success mb-0"><?php echo formatCurrency($total); ?></h4></div>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="small">Total Amount:</span> 
+                                        <span class="small text-muted"><?php echo formatCurrency($total); ?></span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-3">
+                                        <span><strong>Amount Due Today:</strong></span> 
+                                        <h4 class="text-success mb-0" id="amountDueDisplay"><?php echo formatCurrency($total); ?></h4>
+                                    </div>
+                                    <div id="paymentSummaryInfo" class="alert alert-info p-2 small mb-3">
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        <span id="paymentInfoText"></span>
+                                    </div>
+                                </div>
                                 <button type="submit" name="place_order" id="submitBtn" class="btn btn-success w-100 py-3 font-weight-bold shadow-sm" <?php echo $is_down_payment_required_for_cart ? 'disabled' : ''; ?> style="border-radius: 12px;">
                                     PLACE ORDER NOW
                                 </button>
@@ -285,6 +349,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     </div>
 
     <script>
+    const totalAmount = <?php echo $total; ?>;
+    const downPaymentAmount = <?php echo $down_payment_amount; ?>;
+    const remainingBalance = <?php echo $remaining_balance; ?>;
+
+    function downloadQRCode() {
+        const qrImage = document.getElementById('qrImage');
+        if (!qrImage) {
+            alert('QR Code not available');
+            return;
+        }
+        
+        const link = document.createElement('a');
+        link.href = qrImage.src;
+        link.download = 'gcash-qr-code-' + new Date().getTime() + '.png';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function updatePaymentSummary() {
+        const paymentMethod = document.querySelector('input[name="payment_method"]:checked')?.value;
+        const paymentOption = document.querySelector('input[name="payment_option"]:checked')?.value;
+        const amountDueDisplay = document.getElementById('amountDueDisplay');
+        const paymentSummaryInfo = document.getElementById('paymentSummaryInfo');
+        const paymentInfoText = document.getElementById('paymentInfoText');
+        
+        let amountDue = totalAmount;
+        let infoText = '';
+        let shouldShow = false;
+        
+        if (paymentMethod === 'gcash') {
+            shouldShow = true;
+            if (paymentOption === 'down_payment') {
+                amountDue = downPaymentAmount;
+                infoText = `You are paying ₱${downPaymentAmount.toFixed(2)} as downpayment now. The remaining balance of ₱${remainingBalance.toFixed(2)} will be due when claiming your order.`;
+            } else if (paymentOption === 'full_payment') {
+                amountDue = totalAmount;
+                infoText = `You are paying the full amount of ₱${totalAmount.toFixed(2)}. No remaining balance.`;
+            }
+        }
+        
+        if (shouldShow) {
+            paymentSummaryInfo.style.display = 'block';
+            paymentInfoText.textContent = infoText;
+        } else {
+            paymentSummaryInfo.style.display = 'none';
+        }
+        
+        amountDueDisplay.textContent = '₱' + amountDue.toFixed(2);
+    }
+
     function togglePayment(method) {
         const box = document.getElementById('gcash_box');
         const receipt = document.getElementById('receipt_image');
@@ -295,8 +410,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             box.classList.add('d-none');
             receipt.required = false;
         }
+        updatePaymentSummary();
         validateForm();
     }
+
+    // Add event listeners to payment option radio buttons
+    document.addEventListener('DOMContentLoaded', function() {
+        const paymentOptions = document.querySelectorAll('input[name="payment_option"]');
+        paymentOptions.forEach(option => {
+            option.addEventListener('change', updatePaymentSummary);
+        });
+        const paymentMethods = document.querySelectorAll('input[name="payment_method"]');
+        paymentMethods.forEach(method => {
+            method.addEventListener('change', updatePaymentSummary);
+        });
+        updatePaymentSummary();
+    });
+
 
     function validateForm() {
         const method = document.querySelector('input[name="payment_method"]:checked').value;

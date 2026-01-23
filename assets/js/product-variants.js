@@ -28,9 +28,9 @@ document.getElementById('addVariantType')?.addEventListener('click', function() 
                         <label class="form-label mb-1">Price (₱)</label>
                         <input type="number" step="0.01" class="form-control" name="variant_prices[]" placeholder="0.00" required min="0">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-3 variant-stock-column">
                         <label class="form-label mb-1">Stock</label>
-                        <input type="number" class="form-control" name="variant_stocks[]" placeholder="0" required min="0">
+                        <input type="number" class="form-control variant-stock-input" name="variant_stocks[]" placeholder="0" min="0">
                     </div>
                     <div class="col-md-2 d-flex align-items-end">
                         <button type="button" class="btn btn-sm btn-outline-danger w-100" onclick="removeVariantValue(this)">
@@ -47,6 +47,7 @@ document.getElementById('addVariantType')?.addEventListener('click', function() 
     
     container.appendChild(variantGroup);
     checkVariantFields();
+    updateVariantStockRequiredStatus();
 });
 
 // Add variant value to a variant type
@@ -62,8 +63,8 @@ function addVariantValue(button) {
             <div class="col-md-3">
                 <input type="number" step="0.01" class="form-control" name="variant_prices[]" placeholder="0.00" required min="0">
             </div>
-            <div class="col-md-3">
-                <input type="number" class="form-control" name="variant_stocks[]" placeholder="0" required min="0">
+            <div class="col-md-3 variant-stock-column">
+                <input type="number" class="form-control variant-stock-input" name="variant_stocks[]" placeholder="0" min="0">
             </div>
             <div class="col-md-2">
                 <button type="button" class="btn btn-sm btn-outline-danger w-100" onclick="removeVariantValue(this)">
@@ -76,6 +77,7 @@ function addVariantValue(button) {
     valuesContainer.insertBefore(newRow, button);
     // Re-evaluate fields after adding a new value
     checkVariantFields();
+    updateVariantStockRequiredStatus();
 }
 
 // Remove variant value
@@ -160,6 +162,36 @@ function checkVariantFields() {
     }
 }
 
+/**
+ * @summary Updates required status of variant stock fields based on preorder checkbox
+ * For preorder products, stock is not required (and will be hidden anyway)
+ */
+function updateVariantStockRequiredStatus() {
+    const isPreorderAdd = document.getElementById('isPreorderAdd');
+    const variantStockInputs = document.querySelectorAll('#variantTypes input[name="variant_stocks[]"]');
+    const variantStockColumns = document.querySelectorAll('#variantTypes .variant-stock-column');
+    
+    if (isPreorderAdd && isPreorderAdd.checked) {
+        // Preorder enabled - hide stock column and remove required
+        variantStockInputs.forEach(input => {
+            input.removeAttribute('required');
+            input.value = 0; // Set to 0 since it won't be used
+        });
+        // Hide the entire stock column
+        variantStockColumns.forEach(col => {
+            col.style.display = 'none';
+        });
+    } else {
+        // Regular product - show stock column
+        variantStockInputs.forEach(input => {
+            // Don't add required here - let form validation handle it
+        });
+        variantStockColumns.forEach(col => {
+            col.style.display = '';
+        });
+    }
+}
+
 // For Edit Modal - add variant type with modal ID
 function addVariantType(productId) {
     const container = document.getElementById('variantTypes' + productId);
@@ -187,9 +219,9 @@ function addVariantType(productId) {
                         <label class="form-label mb-1">Price (₱)</label>
                         <input type="number" step="0.01" class="form-control" name="variant_prices[]" placeholder="0.00" required min="0">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-3 variant-stock-column">
                         <label class="form-label mb-1">Stock</label>
-                        <input type="number" class="form-control" name="variant_stocks[]" placeholder="0" required min="0">
+                        <input type="number" class="form-control variant-stock-input" name="variant_stocks[]" placeholder="0" min="0">
                     </div>
                     <div class="col-md-2 d-flex align-items-end">
                         <button type="button" class="btn btn-sm btn-outline-danger w-100" onclick="removeVariantValue(this)">

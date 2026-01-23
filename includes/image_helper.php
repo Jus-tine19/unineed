@@ -48,23 +48,36 @@ function extractColors($imagePath) {
         ];
     }
     
+    // If GD extension or image functions are not available, return default palette
+    if (!extension_loaded('gd') || !function_exists('imagecreatefromstring')) {
+        return [
+            'primary' => '#2E4412',
+            'secondary' => '#F6C500',
+            'accent' => '#F78C56'
+        ];
+    }
+
     // Create image resource
     $image = null;
     $extension = strtolower(pathinfo($serverPath, PATHINFO_EXTENSION));
-    
+
     switch ($extension) {
         case 'jpg':
         case 'jpeg':
-            $image = imagecreatefromjpeg($serverPath);
+            $image = @imagecreatefromjpeg($serverPath);
             break;
         case 'png':
-            $image = imagecreatefrompng($serverPath);
+            $image = @imagecreatefrompng($serverPath);
             break;
         case 'gif':
-            $image = imagecreatefromgif($serverPath);
+            $image = @imagecreatefromgif($serverPath);
             break;
         default:
-            return null;
+            return [
+                'primary' => '#2E4412',
+                'secondary' => '#F6C500',
+                'accent' => '#F78C56'
+            ];
     }
     
     if (!$image) {

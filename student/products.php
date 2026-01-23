@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
                 $error = "Please select all variants.";
                 $valid = false;
             } else {
-                // Check stock for the specific variant combination
+                // Check stock for the specific variant combination (skip if preorder)
                 foreach ($variants as $type => $value) {
                     $type = mysqli_real_escape_string($conn, $type);
                     $value = mysqli_real_escape_string($conn, $value);
@@ -42,10 +42,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
                                                       AND variant_type = '$type' 
                                                       AND variant_value = '$value'");
                     if ($stock_row = mysqli_fetch_assoc($stock_check)) {
-                        if ($stock_row['stock_quantity'] < $quantity) {
-                            $error = "Insufficient stock for selected variant.";
-                            $valid = false;
-                            break;
+                        if (empty($product['is_preorder']) || $product['is_preorder'] == 0) {
+                            if ($stock_row['stock_quantity'] < $quantity) {
+                                $error = "Insufficient stock for selected variant.";
+                                $valid = false;
+                                break;
+                            }
                         }
                     } else {
                         $error = "Invalid variant selected.";
@@ -55,10 +57,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
                 }
             }
         } else {
-            // No variants, check base stock
-            if ($product['stock_quantity'] < $quantity) {
-                $error = "Insufficient stock.";
-                $valid = false;
+            // No variants, check base stock (skip if preorder)
+            if (empty($product['is_preorder']) || $product['is_preorder'] == 0) {
+                if ($product['stock_quantity'] < $quantity) {
+                    $error = "Insufficient stock.";
+                    $valid = false;
+                }
             }
         }
         
@@ -246,26 +250,35 @@ $categories = mysqli_query($conn, $categories_query);
                                             <i class="bi bi-box-seam me-1"></i>
                                             <?php 
                                             $stock = $product['variant_count'] > 0 ? $product['total_variant_stock'] : $product['stock_quantity'];
-                                            if ($stock > 0): 
+                                            if (!empty($product['is_preorder']) && $product['is_preorder'] == 1):
                                             ?>
-                                                Stock: <?php echo $stock; ?>
+                                                <span class="text-info">Pre-order / Made-to-order</span>
                                             <?php else: ?>
-                                                <span class="text-danger">Out of Stock</span>
+                                                <?php if ($stock > 0): ?>
+                                                    Stock: <?php echo $stock; ?>
+                                                <?php else: ?>
+                                                    <span class="text-danger">Out of Stock</span>
+                                                <?php endif; ?>
                                             <?php endif; ?>
                                         </small>
                                     </div>
                                     
                                     <?php 
                                     $stock = $product['variant_count'] > 0 ? $product['total_variant_stock'] : $product['stock_quantity'];
-                                    if ($stock > 0): 
-                                    ?>
+                                    if (!empty($product['is_preorder']) && $product['is_preorder'] == 1): ?>
                                         <button id="addToCartBtn<?php echo $product['product_id']; ?>" class="btn btn-primary btn-sm w-100" data-bs-toggle="modal" data-bs-target="#addModal<?php echo $product['product_id']; ?>">
-                                            <i class="bi bi-cart-plus me-2"></i>Add to Cart
+                                            <i class="bi bi-cart-plus me-2"></i>Add to Cart (Pre-order)
                                         </button>
                                     <?php else: ?>
-                                        <button class="btn btn-secondary btn-sm w-100" disabled>
-                                            Out of Stock
-                                        </button>
+                                        <?php if ($stock > 0): ?>
+                                            <button id="addToCartBtn<?php echo $product['product_id']; ?>" class="btn btn-primary btn-sm w-100" data-bs-toggle="modal" data-bs-target="#addModal<?php echo $product['product_id']; ?>">
+                                                <i class="bi bi-cart-plus me-2"></i>Add to Cart
+                                            </button>
+                                        <?php else: ?>
+                                            <button class="btn btn-secondary btn-sm w-100" disabled>
+                                                Out of Stock
+                                            </button>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -307,7 +320,11 @@ $categories = mysqli_query($conn, $categories_query);
                                                         <small class="text-muted"><?php echo htmlspecialchars($product['category']); ?></small>
                                                         <h6 class="mt-1"><?php echo htmlspecialchars($product['product_name']); ?></h6>
                                                         <p class="text-muted small mb-1"><?php echo htmlspecialchars($product['description']); ?></p>
+                                                        <?php if (empty($product['is_preorder']) || $product['is_preorder'] == 0): ?>
                                                         <p class="text-success fw-bold mb-1">Base Price: <?php echo formatCurrency($product['price']); ?></p>
+                                                        <?php else: ?>
+                                                        <p class="mb-1"><span class="badge bg-info me-2">Pre-order / Made-to-order</span></p>
+                                                        <?php endif; ?>
                                                     </div>
 
                                                     <?php
@@ -351,21 +368,37 @@ $categories = mysqli_query($conn, $categories_query);
                                                         <div class="d-flex align-items-center">
                                                             <button type="button" class="btn btn-outline-secondary btn-sm me-1 qty-decrease" data-target="#quantityInput<?php echo $product['product_id']; ?>">-</button>
                                                             <input type="number" class="form-control text-center" name="quantity" value="1" min="1" 
+                                                                <?php if (!empty($product['is_preorder']) && $product['is_preorder'] == 1): ?>
+                                                                id="quantityInput<?php echo $product['product_id']; ?>" style="width:80px;" required
+                                                            <?php else: ?>
                                                                 max="<?php echo $has_variants ? 1 : $product['stock_quantity']; ?>" 
                                                                 required
                                                                 <?php echo $has_variants ? 'disabled' : ''; ?>
-                                                                id="quantityInput<?php echo $product['product_id']; ?>" style="width:80px;">
+                                                                id="quantityInput<?php echo $product['product_id']; ?>" style="width:80px;"
+                                                            <?php endif; ?>
                                                             <button type="button" class="btn btn-outline-secondary btn-sm ms-1 qty-increase" data-target="#quantityInput<?php echo $product['product_id']; ?>">+</button>
                                                         </div>
                                                     </div>
 
                                                     <div class="price-stock-info text-start mb-2">
                                                         <p class="mb-1"><strong>Price:</strong> <span id="displayPrice<?php echo $product['product_id']; ?>">
-                                                            <?php echo $has_variants ? 'Select variants to see price' : formatCurrency($product['price']); ?>
+                                                            <?php 
+                                                            if ($has_variants) {
+                                                                echo 'Select variants to see price';
+                                                            } else {
+                                                                if (empty($product['is_preorder']) || $product['is_preorder'] == 0) {
+                                                                    echo formatCurrency($product['price']);
+                                                                } else {
+                                                                    echo 'Pre-order pricing';
+                                                                }
+                                                            }
+                                                            ?>
                                                         </span></p>
+                                                        <?php if (empty($product['is_preorder']) || $product['is_preorder'] == 0): ?>
                                                         <p class="mb-1"><strong>Available Stock:</strong> <span id="displayStock<?php echo $product['product_id']; ?>">
                                                             <?php echo $has_variants ? 'Select variants to see stock' : $product['stock_quantity'] . ' units'; ?>
                                                         </span></p>
+                                                        <?php endif; ?>
                                                         <p class="mb-0"><strong>Total:</strong> <span id="displayTotal<?php echo $product['product_id']; ?>">
                                                             <?php echo $has_variants ? '₱0.00' : formatCurrency($product['price']); ?>
                                                         </span></p>
