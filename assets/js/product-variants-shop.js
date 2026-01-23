@@ -119,7 +119,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Quantity +/- buttons
     document.querySelectorAll('.qty-decrease').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
             const target = document.querySelector(this.dataset.target);
             if (!target) return;
             let val = parseInt(target.value) || 1;
@@ -130,7 +131,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     document.querySelectorAll('.qty-increase').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
             const target = document.querySelector(this.dataset.target);
             if (!target) return;
             let val = parseInt(target.value) || 1;

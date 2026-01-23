@@ -86,21 +86,25 @@ $total = $subtotal; // No tax or shipping for now
                 <div class="row g-4">
                     <!-- Cart Items -->
                     <div class="col-md-8">
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">Cart Items (<?php echo $total_items; ?>)</h5>
-                                <form method="POST" style="display: inline;">
-                                    <button type="submit" name="clear_cart" class="btn btn-sm btn-outline-danger" onclick="return confirm('Clear all items from cart?')">
-                                        <i class="bi bi-trash me-1"></i>Clear Cart
-                                    </button>
-                                </form>
+                        <div class="card" style="border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-radius: 12px;">
+                            <div class="card-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px 12px 0 0; border: none; padding: 1.5rem;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0 fw-bold" style="font-size: 1.2rem;">
+                                        <i class="bi bi-bag-check me-2"></i>Cart Items (<?php echo $total_items; ?>)
+                                    </h5>
+                                    <form method="POST" style="display: inline;">
+                                        <button type="submit" name="clear_cart" class="btn btn-sm" style="background-color: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); font-weight: 600; transition: all 0.3s ease;" onclick="return confirm('Clear all items from cart?')" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.3)'" onmouseout="this.style.backgroundColor='rgba(255,255,255,0.2)'">
+                                            <i class="bi bi-trash me-1"></i>Clear Cart
+                                        </button>
+                                    </form>
+                                </div>
                             </div>
                             <div class="card-body p-0">
                                 <?php foreach ($cart_items as $key => $item): ?>
-                                    <div class="cart-item border-bottom p-3">
+                                    <div class="cart-item" style="border-bottom: 1px solid #f0f0f0; padding: 1.5rem; transition: all 0.3s ease;" onmouseover="this.style.backgroundColor='#f9f9f9'" onmouseout="this.style.backgroundColor='white'">
                                         <div class="row align-items-center">
                                             <div class="col-auto">
-                                                <input type="checkbox" name="selected_items[]" value="<?php echo htmlspecialchars($key); ?>" class="form-check-input cart-checkbox" checked data-price="<?php echo $item['price']; ?>" data-quantity="<?php echo $item['quantity']; ?>">
+                                                <input type="checkbox" name="selected_items[]" value="<?php echo htmlspecialchars($key); ?>" class="form-check-input cart-checkbox" checked data-price="<?php echo $item['price']; ?>" data-quantity="<?php echo $item['quantity']; ?>" style="width: 20px; height: 20px; cursor: pointer;">
                                             </div>
                                             <div class="col-md-2">
                                                 <?php if ($item['image_path']): ?>
@@ -110,42 +114,44 @@ $total = $subtotal; // No tax or shipping for now
                                                             $cartImg = '../' . ltrim($cartImg, '/');
                                                         }
                                                     ?>
-                                                    <img src="<?php echo htmlspecialchars($cartImg); ?>" alt="Product" class="img-fluid rounded" style="max-height: 80px; object-fit: cover;">
+                                                    <img src="<?php echo htmlspecialchars($cartImg); ?>" alt="Product" class="img-fluid rounded" style="max-height: 90px; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                                                 <?php else: ?>
-                                                    <div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 80px;">
+                                                    <div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 90px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                                                         <i class="bi bi-image text-muted fs-2"></i>
                                                     </div>
                                                 <?php endif; ?>
                                             </div>
                                             <div class="col-md-4">
-                                                <h6 class="mb-1"><?php echo htmlspecialchars($item['product_name']); ?></h6>
+                                                <h6 class="mb-2 fw-bold" style="color: #2c3e50; font-size: 1rem;"><?php echo htmlspecialchars($item['product_name']); ?></h6>
                                                 <?php if (!empty($item['variants'])): ?>
-                                                    <small class="text-muted">
+                                                    <small class="text-muted d-block mb-2" style="line-height: 1.6;">
                                                         <?php foreach ($item['variants'] as $type => $value): ?>
-                                                            <?php echo htmlspecialchars(ucfirst($type)); ?>: <?php echo htmlspecialchars($value); ?><br>
+                                                            <span style="background: #f0f0f0; padding: 0.25rem 0.75rem; border-radius: 4px; display: inline-block; margin-right: 0.5rem; margin-bottom: 0.25rem;">
+                                                                <strong><?php echo htmlspecialchars(ucfirst($type)); ?></strong>: <?php echo htmlspecialchars($value); ?>
+                                                            </span><br>
                                                         <?php endforeach; ?>
                                                     </small>
                                                 <?php endif; ?>
-                                                <p class="text-success fw-bold mb-0"><?php echo formatCurrency($item['price']); ?></p>
+                                                <p class="text-success fw-bold mb-0" style="font-size: 1.1rem;">₱<?php echo number_format($item['price'], 2); ?></p>
                                             </div>
                                             <div class="col-md-3">
                                                 <form method="POST" class="d-flex align-items-center gap-2">
                                                     <input type="hidden" name="cart_key" value="<?php echo htmlspecialchars($key); ?>">
-                                                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="this.nextElementSibling.stepDown(); this.form.submit();">
+                                                    <button type="button" class="btn btn-outline-secondary" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;" onclick="this.nextElementSibling.stepDown(); this.form.submit();">
                                                         <i class="bi bi-dash"></i>
                                                     </button>
-                                                    <input type="number" name="quantity" value="<?php echo $item['quantity']; ?>" min="1" max="99" class="form-control form-control-sm text-center" style="width: 60px;" readonly>
-                                                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="this.previousElementSibling.stepUp(); this.form.submit();">
+                                                    <input type="number" name="quantity" value="<?php echo $item['quantity']; ?>" min="1" max="99" class="form-control form-control-sm text-center fw-bold" style="width: 60px; border-radius: 6px; height: 38px;" readonly>
+                                                    <button type="button" class="btn btn-outline-secondary" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;" onclick="this.previousElementSibling.stepUp(); this.form.submit();">
                                                         <i class="bi bi-plus"></i>
                                                     </button>
                                                     <button type="submit" name="update_quantity" class="btn btn-sm btn-primary d-none">Update</button>
                                                 </form>
                                             </div>
                                             <div class="col-md-2 text-end">
-                                                <p class="fw-bold mb-2"><?php echo formatCurrency($item['price'] * $item['quantity']); ?></p>
+                                                <p class="fw-bold mb-2" style="font-size: 1.1rem; color: #2c3e50;">₱<?php echo number_format($item['price'] * $item['quantity'], 2); ?></p>
                                                 <form method="POST" style="display: inline;">
                                                     <input type="hidden" name="cart_key" value="<?php echo htmlspecialchars($key); ?>">
-                                                    <button type="submit" name="remove_item" class="btn btn-sm btn-danger" onclick="return confirm('Remove this item?')">
+                                                    <button type="submit" name="remove_item" class="btn btn-sm" style="background-color: #FF6B6B; color: white; border: none; border-radius: 6px; padding: 0.5rem 0.75rem; font-weight: 600; transition: all 0.3s ease;" onclick="return confirm('Remove this item?')" onmouseover="this.style.backgroundColor='#FF5252'" onmouseout="this.style.backgroundColor='#FF6B6B'">
                                                         <i class="bi bi-trash"></i>
                                                     </button>
                                                 </form>
@@ -159,40 +165,52 @@ $total = $subtotal; // No tax or shipping for now
                     
                     <!-- Order Summary -->
                     <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="mb-0">Order Summary</h5>
+                        <div class="card" style="border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-radius: 12px; position: sticky; top: 100px;">
+                            <div class="card-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px 12px 0 0; border: none; padding: 1.5rem;">
+                                <h5 class="mb-0 fw-bold" style="font-size: 1.2rem;">
+                                    <i class="bi bi-receipt me-2"></i>Order Summary
+                                </h5>
                             </div>
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span>Subtotal (<?php echo $total_items; ?> items)</span>
-                                    <span><?php echo formatCurrency($subtotal); ?></span>
+                            <div class="card-body" style="padding: 1.5rem;">
+                                <div class="d-flex justify-content-between mb-3" style="padding-bottom: 1rem; border-bottom: 2px solid #f0f0f0;">
+                                    <span style="color: #666; font-weight: 500;">Subtotal (<?php echo $total_items; ?> items)</span>
+                                    <span style="color: #2c3e50; font-weight: 600;">₱<?php echo number_format($subtotal, 2); ?></span>
                                 </div>
                                 
-                                <hr>
-                                <div class="d-flex justify-content-between mb-3">
-                                    <strong>Total</strong>
-                                    <strong class="text-primary fs-4" id="total-amount"><?php echo formatCurrency($total); ?></strong>
+                                <div class="d-flex justify-content-between mb-4">
+                                    <strong style="font-size: 1.1rem; color: #2c3e50;">Total</strong>
+                                    <strong class="text-success" style="font-size: 1.35rem;" id="total-amount">₱<?php echo number_format($total, 2); ?></strong>
                                 </div>
                                 
-                                <button type="submit" class="btn btn-success btn-lg w-100 mb-2">
+                                <button type="submit" class="btn w-100 mb-3" style="padding: 0.9rem 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: 700; border-radius: 8px; border: none; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); font-size: 0.95rem;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.3)'">
                                     <i class="bi bi-cart-check me-2"></i>Proceed to Checkout
                                 </button>
                                 
-                                <a href="products.php" class="btn btn-outline-secondary w-100">
+                                <a href="products.php" class="btn btn-outline-secondary w-100 mb-3" style="padding: 0.9rem 1.5rem; font-weight: 600; border-radius: 8px; border: 2px solid #667eea; color: #667eea; transition: all 0.3s ease;" onmouseover="this.style.backgroundColor='#f8f9ff'; this.style.transform='translateY(-2px)'" onmouseout="this.style.backgroundColor='transparent'; this.style.transform='translateY(0)'">
                                     <i class="bi bi-arrow-left me-2"></i>Continue Shopping
                                 </a>
                             </div>
                         </div>
                         
                         <!-- Info Card -->
-                        <div class="card mt-3">
-                            <div class="card-body">
-                                <h6 class="card-title"><i class="bi bi-shield-check me-2 text-success"></i>Safe & Secure</h6>
+                        <div class="card" style="border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-radius: 12px; margin-top: 1.5rem;">
+                            <div class="card-body" style="padding: 1.5rem;">
+                                <h6 class="card-title mb-3 fw-bold" style="color: #2c3e50; font-size: 1rem;">
+                                    <i class="bi bi-shield-check me-2" style="color: #27ae60; font-size: 1.2rem;"></i>Safe & Secure
+                                </h6>
                                 <ul class="list-unstyled small mb-0">
-                                    <li class="mb-2"><i class="bi bi-check-circle text-success me-2"></i>Pay cash on pickup</li>
-                                    <li class="mb-2"><i class="bi bi-check-circle text-success me-2"></i>Order tracking</li>
-                                    <li class="mb-0"><i class="bi bi-check-circle text-success me-2"></i>Customer support</li>
+                                    <li class="mb-3" style="display: flex; align-items: center;">
+                                        <i class="bi bi-check-circle" style="color: #27ae60; font-weight: bold; margin-right: 0.75rem; font-size: 1.1rem;"></i>
+                                        <span style="color: #666;">Pay cash on pickup</span>
+                                    </li>
+                                    <li class="mb-3" style="display: flex; align-items: center;">
+                                        <i class="bi bi-check-circle" style="color: #27ae60; font-weight: bold; margin-right: 0.75rem; font-size: 1.1rem;"></i>
+                                        <span style="color: #666;">Order tracking</span>
+                                    </li>
+                                    <li style="display: flex; align-items: center;">
+                                        <i class="bi bi-check-circle" style="color: #27ae60; font-weight: bold; margin-right: 0.75rem; font-size: 1.1rem;"></i>
+                                        <span style="color: #666;">Customer support</span>
+                                    </li>
                                 </ul>
                             </div>
                         </div>

@@ -199,8 +199,8 @@ $categories = mysqli_query($conn, $categories_query);
             <div class="row g-4">
                 <?php if (mysqli_num_rows($products) > 0): ?>
                     <?php while ($product = mysqli_fetch_assoc($products)): ?>
-                        <div class="col-md-3">
-                            <div class="product-card" data-category="<?php echo htmlspecialchars($product['category']); ?>">
+                        <div class="col-md-3 d-flex">
+                            <div class="product-card w-100 d-flex flex-column" data-category="<?php echo htmlspecialchars($product['category']); ?>">
                                 <?php
                                     $imgSrc = '';
                                     if (!empty($product['image_path'])) $imgSrc = $product['image_path'];
@@ -228,13 +228,14 @@ $categories = mysqli_query($conn, $categories_query);
                                     </div>
                                 <?php endif; ?>
                                 
-                                <div class="product-details">
-                                    <span class="badge bg-secondary mb-2"><?php echo htmlspecialchars($product['category']); ?></span>
-                                    <h6 class="product-title"><?php echo htmlspecialchars($product['product_name']); ?></h6>
-                                    <p class="text-muted small mb-2"><?php echo htmlspecialchars(substr($product['description'], 0, 80)); ?><?php echo strlen($product['description']) > 80 ? '...' : ''; ?></p>
+                                <div class="product-details flex-grow-1 d-flex flex-column">
+                                    <span class="badge bg-primary mb-3 align-self-start"><?php echo htmlspecialchars($product['category']); ?></span>
+                                    <h6 class="product-title fw-bold mb-2" style="font-size: 1.1rem; color: #2c3e50;"><?php echo htmlspecialchars($product['product_name']); ?></h6>
+                                    <p class="text-muted small mb-3" style="flex-grow: 1;"><?php echo htmlspecialchars(substr($product['description'], 0, 80)); ?><?php echo strlen($product['description']) > 80 ? '...' : ''; ?></p>
                                     
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
                                         <div class="product-price">
+                                            <span class="fw-bold" style="font-size: 1.25rem; color: #27ae60;">
                                             <?php if ($product['variant_count'] > 0): ?>
                                                 <?php if ($product['min_variant_price'] == $product['max_variant_price']): ?>
                                                     <?php echo formatCurrency($product['min_variant_price']); ?>
@@ -244,8 +245,9 @@ $categories = mysqli_query($conn, $categories_query);
                                             <?php else: ?>
                                                 <?php echo formatCurrency($product['price']); ?>
                                             <?php endif; ?>
+                                            </span>
                                         </div>
-                                        <small class="text-muted">
+                                        <small class="text-muted" style="font-size: 0.9rem;">
                                             <i class="bi bi-box-seam me-1"></i>
                                             <?php 
                                             $stock = $product['variant_count'] > 0 ? $product['total_variant_stock'] : $product['stock_quantity'];
@@ -262,40 +264,42 @@ $categories = mysqli_query($conn, $categories_query);
                                         </small>
                                     </div>
                                     
+                                    <div class="mt-auto">
                                     <?php 
                                     $stock = $product['variant_count'] > 0 ? $product['total_variant_stock'] : $product['stock_quantity'];
                                     if (!empty($product['is_preorder']) && $product['is_preorder'] == 1): ?>
-                                        <button id="addToCartBtn<?php echo $product['product_id']; ?>" class="btn btn-primary btn-sm w-100" data-bs-toggle="modal" data-bs-target="#addModal<?php echo $product['product_id']; ?>">
-                                            <i class="bi bi-cart-plus me-2"></i>Add to Cart (Pre-order)
+                                        <button id="addToCartBtn<?php echo $product['product_id']; ?>" class="btn btn-primary w-100" style="font-weight: 600; padding: 0.65rem;" data-bs-toggle="modal" data-bs-target="#addModal<?php echo $product['product_id']; ?>">
+                                            <i class="bi bi-cart-plus me-2"></i>Add to Cart
                                         </button>
                                     <?php else: ?>
                                         <?php if ($stock > 0): ?>
-                                            <button id="addToCartBtn<?php echo $product['product_id']; ?>" class="btn btn-primary btn-sm w-100" data-bs-toggle="modal" data-bs-target="#addModal<?php echo $product['product_id']; ?>">
+                                            <button id="addToCartBtn<?php echo $product['product_id']; ?>" class="btn btn-primary w-100" style="font-weight: 600; padding: 0.65rem;" data-bs-toggle="modal" data-bs-target="#addModal<?php echo $product['product_id']; ?>">
                                                 <i class="bi bi-cart-plus me-2"></i>Add to Cart
                                             </button>
                                         <?php else: ?>
-                                            <button class="btn btn-secondary btn-sm w-100" disabled>
+                                            <button class="btn btn-secondary w-100" disabled style="padding: 0.65rem;">
                                                 Out of Stock
                                             </button>
                                         <?php endif; ?>
                                     <?php endif; ?>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         
                         <!-- Add to Cart Modal -->
                         <div class="modal fade" id="addModal<?php echo $product['product_id']; ?>" tabindex="-1">
-                            <div class="modal-dialog">
-                                        <div class="modal-content">
+                            <div class="modal-dialog modal-lg">
+                                        <div class="modal-content" style="border: none; box-shadow: 0 5px 30px rgba(0,0,0,0.15);">
                                             <form method="POST">
-                                                <div class="modal-header">
-                                                    <h5 class="modal-title"><?php echo htmlspecialchars($product['product_name']); ?></h5>
-                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                <div class="modal-header" style="border-bottom: 2px solid #f0f0f0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                                                    <h5 class="modal-title fw-bold"><?php echo htmlspecialchars($product['product_name']); ?></h5>
+                                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                                 </div>
-                                                <div class="modal-body text-center">
+                                                <div class="modal-body" style="padding: 2rem;">
                                                     <input type="hidden" name="product_id" value="<?php echo $product['product_id']; ?>">
 
-                                                    <div class="mb-3">
+                                                    <div class="mb-4 text-center">
                                                         <?php
                                                             $modalImg = '';
                                                             if (!empty($product['image_path'])) $modalImg = $product['image_path'];
@@ -311,18 +315,26 @@ $categories = mysqli_query($conn, $categories_query);
                                                                     $modalImgNorm = '/' . $modalImgNorm;
                                                                 }
                                                             ?>
-                                                            <img src="<?php echo htmlspecialchars($modalImgNorm); ?>" alt="<?php echo htmlspecialchars($product['product_name']); ?>" style="max-width: 220px; border-radius: 10px; border:1px solid #e9ecef; padding:8px;">
+                                                            <img src="<?php echo htmlspecialchars($modalImgNorm); ?>" alt="<?php echo htmlspecialchars($product['product_name']); ?>" style="max-width: 100%; max-height: 380px; border-radius: 12px; border: 2px solid #e9ecef; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
                                                         <?php endif; ?>
                                                     </div>
 
-                                                    <div class="text-start mb-3">
-                                                        <small class="text-muted"><?php echo htmlspecialchars($product['category']); ?></small>
-                                                        <h6 class="mt-1"><?php echo htmlspecialchars($product['product_name']); ?></h6>
-                                                        <p class="text-muted small mb-1"><?php echo htmlspecialchars($product['description']); ?></p>
-                                                        <?php if (empty($product['is_preorder']) || $product['is_preorder'] == 0): ?>
-                                                        <p class="text-success fw-bold mb-1">Base Price: <?php echo formatCurrency($product['price']); ?></p>
+                                                    <div class="mb-4 pb-3 border-bottom">
+                                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                                            <div>
+                                                                <span class="badge bg-primary" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;"><?php echo htmlspecialchars($product['category']); ?></span>
+                                                                <h5 class="mt-2 mb-1 fw-bold" style="color: #2c3e50;"><?php echo htmlspecialchars($product['product_name']); ?></h5>
+                                                            </div>
+                                                        </div>
+                                                        <p class="text-muted mb-2" style="line-height: 1.6;"><?php echo htmlspecialchars($product['description']); ?></p>
+                                                        <?php if (!$has_variants): ?>
+                                                            <?php if (empty($product['is_preorder']) || $product['is_preorder'] == 0): ?>
+                                                            <p class="fw-bold mb-0" style="font-size: 1.3rem; color: #27ae60;">Base Price: <?php echo formatCurrency($product['price']); ?></p>
+                                                            <?php else: ?>
+                                                            <p class="mb-0"><span class="badge bg-info" style="font-size: 0.9rem; padding: 0.5rem 0.75rem;">Pre-order / Made-to-order</span></p>
+                                                            <?php endif; ?>
                                                         <?php else: ?>
-                                                        <p class="mb-1"><span class="badge bg-info me-2">Pre-order / Made-to-order</span></p>
+                                                            <p class="mb-0"><span class="badge bg-info" style="font-size: 0.9rem; padding: 0.5rem 0.75rem;">Select variant to see price</span></p>
                                                         <?php endif; ?>
                                                     </div>
 
@@ -333,14 +345,14 @@ $categories = mysqli_query($conn, $categories_query);
                                                     $has_variants = mysqli_num_rows($variants_result) > 0;
                                                     ?>
 
-                                                    <div class="variant-options mb-3 text-start">
+                                                    <div class="variant-options mb-4 text-start">
                                                         <?php
                                                         while ($variant_type = mysqli_fetch_assoc($variants_result)) {
                                                             $type = $variant_type['variant_type'];
-                                                            echo '<div class="mb-2">';
-                                                            echo '<label class="form-label">' . htmlspecialchars(ucfirst($type)) . ' *</label>';
-                                                            echo '<select class="form-select variant-select" name="variants[' . htmlspecialchars($type) . ']" data-product-id="' . $product['product_id'] . '" required>';
-                                                            echo '<option value="">Select ' . htmlspecialchars(ucfirst($type)) . '</option>';
+                                                            echo '<div class="mb-3">';
+                                                            echo '<label class="form-label fw-bold mb-2" style="font-size: 0.95rem; color: #2c3e50; display: block;">' . htmlspecialchars(ucfirst($type)) . ' <span style="color: #e74c3c;">*</span></label>';
+                                                            echo '<select class="form-select variant-select" name="variants[' . htmlspecialchars($type) . ']" data-product-id="' . $product['product_id'] . '" required style="padding: 0.75rem 1rem; font-size: 0.95rem; border: 2px solid #e0e0e0; border-radius: 8px; background-color: #fff; color: #2c3e50; font-weight: 500; transition: all 0.3s ease;">';
+                                                            echo '<option value="" style="color: #999; font-weight: 400;">Select ' . htmlspecialchars(ucfirst($type)) . '</option>';
 
                                                             // Fetch values for this variant type
                                                             $values_query = "SELECT * FROM product_variants WHERE product_id = " . $product['product_id'] . " AND variant_type = '" . mysqli_real_escape_string($conn, $type) . "'";
@@ -349,7 +361,8 @@ $categories = mysqli_query($conn, $categories_query);
                                                             while ($value = mysqli_fetch_assoc($values_result)) {
                                                                 echo '<option value="' . htmlspecialchars($value['variant_value']) . '" 
                                                                         data-price="' . $value['price'] . '"
-                                                                        data-stock="' . $value['stock_quantity'] . '">
+                                                                        data-stock="' . $value['stock_quantity'] . '"
+                                                                        style="padding: 0.75rem; background-color: #fff; color: #2c3e50; font-weight: 500;">
                                                                         ' . htmlspecialchars($value['variant_value']) . ' - ' . formatCurrency($value['price']) . '
                                                                     </option>';
                                                             }
@@ -360,55 +373,76 @@ $categories = mysqli_query($conn, $categories_query);
                                                         ?>
                                                     </div>
 
-                                                    <div class="d-flex align-items-center justify-content-between mb-3">
-                                                        <div class="d-flex align-items-center gap-2">
-                                                            <label class="form-label mb-0">Quantity</label>
-                                                        </div>
-                                                        <div class="d-flex align-items-center">
-                                                            <button type="button" class="btn btn-outline-secondary btn-sm me-1 qty-decrease" data-target="#quantityInput<?php echo $product['product_id']; ?>">-</button>
+                                                    <div class="mb-4 pb-3 border-bottom">
+                                                        <label class="form-label fw-bold mb-3" style="font-size: 1rem; color: #2c3e50;">Quantity</label>
+                                                        <div class="d-flex align-items-center gap-3">
+                                                            <button type="button" class="btn btn-outline-primary qty-decrease" style="width: 45px; height: 45px; border-radius: 8px; font-size: 1.3rem; font-weight: bold; padding: 0; display: flex; align-items: center; justify-content: center;" data-target="#quantityInput<?php echo $product['product_id']; ?>">
+                                                                <i class="bi bi-dash"></i>
+                                                            </button>
                                                             <input type="number" class="form-control text-center" name="quantity" value="1" min="1" 
                                                                 <?php if (!empty($product['is_preorder']) && $product['is_preorder'] == 1): ?>
-                                                                id="quantityInput<?php echo $product['product_id']; ?>" style="width:80px;" required
+                                                                id="quantityInput<?php echo $product['product_id']; ?>" style="width: 80px; height: 45px; font-size: 1.1rem; font-weight: 600; border-radius: 8px;" required
                                                             <?php else: ?>
                                                                 max="<?php echo $has_variants ? 1 : $product['stock_quantity']; ?>" 
                                                                 required
                                                                 <?php echo $has_variants ? 'disabled' : ''; ?>
-                                                                id="quantityInput<?php echo $product['product_id']; ?>" style="width:80px;"
-                                                            <?php endif; ?>
-                                                            <button type="button" class="btn btn-outline-secondary btn-sm ms-1 qty-increase" data-target="#quantityInput<?php echo $product['product_id']; ?>">+</button>
+                                                                id="quantityInput<?php echo $product['product_id']; ?>" style="width: 80px; height: 45px; font-size: 1.1rem; font-weight: 600; border-radius: 8px;"
+                                                            <?php endif; ?>>
+                                                            <button type="button" class="btn btn-outline-primary qty-increase" style="width: 45px; height: 45px; border-radius: 8px; font-size: 1.3rem; font-weight: bold; padding: 0; display: flex; align-items: center; justify-content: center;" data-target="#quantityInput<?php echo $product['product_id']; ?>">
+                                                                <i class="bi bi-plus"></i>
+                                                            </button>
                                                         </div>
                                                     </div>
 
-                                                    <div class="price-stock-info text-start mb-2">
-                                                        <p class="mb-1"><strong>Price:</strong> <span id="displayPrice<?php echo $product['product_id']; ?>">
-                                                            <?php 
-                                                            if ($has_variants) {
-                                                                echo 'Select variants to see price';
-                                                            } else {
-                                                                if (empty($product['is_preorder']) || $product['is_preorder'] == 0) {
-                                                                    echo formatCurrency($product['price']);
-                                                                } else {
-                                                                    echo 'Pre-order pricing';
-                                                                }
-                                                            }
-                                                            ?>
-                                                        </span></p>
-                                                        <?php if (empty($product['is_preorder']) || $product['is_preorder'] == 0): ?>
-                                                        <p class="mb-1"><strong>Available Stock:</strong> <span id="displayStock<?php echo $product['product_id']; ?>">
-                                                            <?php echo $has_variants ? 'Select variants to see stock' : $product['stock_quantity'] . ' units'; ?>
-                                                        </span></p>
-                                                        <?php endif; ?>
-                                                        <p class="mb-0"><strong>Total:</strong> <span id="displayTotal<?php echo $product['product_id']; ?>">
-                                                            <?php echo $has_variants ? '₱0.00' : formatCurrency($product['price']); ?>
-                                                        </span></p>
+                                                    <div class="price-stock-info" style="background: #f8f9fa; border-radius: 10px; padding: 1.5rem; margin-bottom: 2rem; border-left: 4px solid #667eea;">
+                                                        <div class="row">
+                                                            <div class="col-md-6 mb-2">
+                                                                <small class="text-muted d-block" style="font-size: 0.85rem; margin-bottom: 0.25rem;">Price</small>
+                                                                <p class="mb-0" style="font-size: 1.2rem; font-weight: 600; color: #2c3e50;">
+                                                                    <span id="displayPrice<?php echo $product['product_id']; ?>">
+                                                                        <?php 
+                                                                        if ($has_variants) {
+                                                                            echo 'Select variants to see price';
+                                                                        } else {
+                                                                            if (empty($product['is_preorder']) || $product['is_preorder'] == 0) {
+                                                                                echo formatCurrency($product['price']);
+                                                                            } else {
+                                                                                echo 'Pre-order pricing';
+                                                                            }
+                                                                        }
+                                                                        ?>
+                                                                    </span>
+                                                                </p>
+                                                            </div>
+                                                            <?php if (empty($product['is_preorder']) || $product['is_preorder'] == 0): ?>
+                                                            <div class="col-md-6 mb-2">
+                                                                <small class="text-muted d-block" style="font-size: 0.85rem; margin-bottom: 0.25rem;">Available Stock</small>
+                                                                <p class="mb-0" style="font-size: 1.2rem; font-weight: 600; color: #27ae60;">
+                                                                    <span id="displayStock<?php echo $product['product_id']; ?>">
+                                                                        <?php echo $has_variants ? 'Select variants to see stock' : $product['stock_quantity'] . ' units'; ?>
+                                                                    </span>
+                                                                </p>
+                                                            </div>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                        <div class="border-top mt-2 pt-2">
+                                                            <small class="text-muted d-block" style="font-size: 0.85rem; margin-bottom: 0.25rem;">Total Price</small>
+                                                            <p class="mb-0" style="font-size: 1.35rem; font-weight: 700; color: #27ae60;">
+                                                                <span id="displayTotal<?php echo $product['product_id']; ?>">
+                                                                    <?php echo $has_variants ? '₱0.00' : formatCurrency($product['price']); ?>
+                                                                </span>
+                                                            </p>
+                                                        </div>
                                                     </div>
 
                                                     <input type="hidden" name="selected_variant_price" id="variantPrice<?php echo $product['product_id']; ?>" value="<?php echo $has_variants ? '' : $product['price']; ?>">
                                                     <input type="hidden" name="selected_variant_id" id="variantId<?php echo $product['product_id']; ?>" value="">
                                                 </div>
-                                                <div class="modal-footer">
-                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                    <button id="modalAddBtn<?php echo $product['product_id']; ?>" type="submit" name="add_to_cart" class="btn btn-success">
+                                                <div class="modal-footer" style="border-top: 2px solid #f0f0f0; padding: 1.5rem 2rem; background: #f8f9fa; gap: 1rem;">
+                                                    <button type="button" class="btn modal-btn-cancel" data-bs-dismiss="modal">
+                                                        <i class="bi bi-x-lg me-2"></i>Cancel
+                                                    </button>
+                                                    <button id="modalAddBtn<?php echo $product['product_id']; ?>" type="submit" name="add_to_cart" class="btn modal-btn-add">
                                                         <i class="bi bi-cart-plus me-2"></i>Add to Cart
                                                     </button>
                                                 </div>
