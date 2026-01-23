@@ -38,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $requires_down_payment = isset($_POST['requires_down_payment']) ? 1 : 0;
         // NEW: Pre-order / Made-to-order Checkbox
         $is_preorder = isset($_POST['is_preorder']) ? 1 : 0;
+        $query = "UPDATE products SET name=?, price=?, is_preorder=? WHERE id=?";
         
         // Check if we have variants
         $has_variants = isset($_POST['variant_types']) && is_array($_POST['variant_types']) && !empty(array_filter($_POST['variant_types']));
@@ -47,7 +48,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Get first variant's price and calculate total stock from all variants
             $base_price = 0;
             $stock_quantity = 0;
-            
+            if (isset($_POST['variant_names'])) {
+    foreach ($_POST['variant_names'] as $index => $name) {
+        $price = $_POST['variant_prices'][$index];
+        $stock = $_POST['variant_stocks'][$index];
+        
+        // Use an UPSERT logic (Insert or Update if exists)
+        $stmt = $conn->prepare("INSERT INTO product_variants (product_id, variant_name, price, stock) 
+                                VALUES (?, ?, ?, ?) 
+                                ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock)");
+        $stmt->execute([$product_id, $name, $price, $stock]);
+    }
+}
             if (isset($_POST['variant_prices']) && is_array($_POST['variant_prices'])) {
                 // Ensure we get a valid price from the first variant entry
                 $first_valid_price = array_values(array_filter($_POST['variant_prices'], 'is_numeric'));

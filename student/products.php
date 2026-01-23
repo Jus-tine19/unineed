@@ -58,12 +58,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
             }
         } else {
             // No variants, check base stock (skip if preorder)
-            if (empty($product['is_preorder']) || $product['is_preorder'] == 0) {
-                if ($product['stock_quantity'] < $quantity) {
-                    $error = "Insufficient stock.";
-                    $valid = false;
-                }
-            }
+            if ($product['is_preorder'] == 1 || $product['total_stock'] > 0) {
+    echo '<button class="add-to-cart-btn">Add to Cart</button>';
+} else {
+    echo '<button disabled>Out of Stock</button>';
+}
         }
         
         if ($valid) {

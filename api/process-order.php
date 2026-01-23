@@ -69,6 +69,10 @@ try {
         $stock_stmt = $conn->prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
         $stock_stmt->bind_param("ii", $qty, $product_id);
         $stock_stmt->execute();
+
+        if ($item['is_preorder'] == 0 && $item['quantity'] > $current_stock) {
+    throw new Exception("Stock ran out for " . $item['name']);
+}
     }
 
     $conn->commit();
