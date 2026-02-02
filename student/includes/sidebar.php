@@ -67,6 +67,12 @@ $cart_count = isset($_SESSION['cart']) ? count($_SESSION['cart']) : 0;
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link <?php echo $current_page === 'invoice' ? 'active' : ''; ?>" href="invoice.php">
+                        <i class="bi bi-file-earmark-pdf"></i>
+                        <span class="label">Invoice</span>
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link <?php echo $current_page === 'notifications' ? 'active' : ''; ?>" href="notifications.php">
                         <i class="bi bi-bell"></i>
                         <span class="label">Notifications</span>
