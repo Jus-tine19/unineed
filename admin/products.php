@@ -396,8 +396,26 @@ $down_payment_rate = DOWN_PAYMENT_PERCENTAGE * 100;
                                                 <?php endif; ?>
                                             </td>
                                             <td>
-                                                <strong><?php echo htmlspecialchars($product['product_name']); ?></strong><br>
+                                                <strong><?php echo htmlspecialchars($product['product_name']); ?></strong>
+                                                <?php
+                                                    $display_stock = $product['variant_count'] > 0 ? $product['total_variant_stock'] : $product['stock_quantity'];
+                                                    // If product is a preorder/made-to-order, do not show OUT OF STOCK
+                                                    if ($display_stock == 0 && (empty($product['is_preorder']) || $product['is_preorder'] == 0)) echo ' <span class="badge bg-danger ms-2">OUT OF STOCK</span>';
+                                                ?>
+                                                <br>
                                                 <small class="text-muted"><?php echo htmlspecialchars(substr($product['description'], 0, 50)); ?>...</small>
+                                                <?php if ($product['variant_count'] > 0): ?>
+                                                    <div class="mt-2">
+                                                        <?php
+                                                            $vars_q = mysqli_query($conn, "SELECT variant_id, variant_type, variant_value, stock_quantity FROM product_variants WHERE product_id = " . intval($product['product_id']) . " ORDER BY variant_type, variant_value");
+                                                            while ($v = mysqli_fetch_assoc($vars_q)) {
+                                                                $v_stock = intval($v['stock_quantity']);
+                                                                $badge_class = $v_stock > 0 ? 'bg-success' : 'bg-danger';
+                                                                echo '<div class="small text-muted mb-1">' . htmlspecialchars($v['variant_type'] . ': ' . $v['variant_value']) . ' <span class="badge ' . $badge_class . ' ms-2">' . $v_stock . '</span></div>';
+                                                            }
+                                                        ?>
+                                                    </div>
+                                                <?php endif; ?>
                                             </td>
                                             <td><span class="badge bg-secondary"><?php echo htmlspecialchars($product['category']); ?></span></td>
                                             <td><strong>

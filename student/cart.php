@@ -37,14 +37,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['clear_cart'])) {
     $success = "Cart cleared!";
 }
 
-// Calculate totals
-$cart_items = $_SESSION['cart'];
+// Validate current session cart against latest stock and calculate totals
+$cart_items = &$_SESSION['cart'];
 $subtotal = 0;
 $total_items = 0;
+$checkout_disabled = false;
+$cart_notifications = [];
 
-foreach ($cart_items as $item) {
-    $subtotal += $item['price'] * $item['quantity'];
-    $total_items += $item['quantity'];
+foreach ($cart_items as $key => $item) {
+    $p_id = intval($item['product_id']);
+    $variant_id = isset($item['variant_id']) ? intval($item['variant_id']) : null;
+    $available = 0;
+
+    if ($variant_id) {
+        $v_q = mysqli_query($conn, "SELECT stock_quantity FROM product_variants WHERE variant_id = $variant_id LIMIT 1");
+        if ($v_q && mysqli_num_rows($v_q) > 0) {
+            $vrow = mysqli_fetch_assoc($v_q);
+            $available = intval($vrow['stock_quantity']);
+        }
+    } else {
+        $p_q = mysqli_query($conn, "SELECT stock_quantity FROM products WHERE product_id = $p_id LIMIT 1");
+        $prow = $p_q ? mysqli_fetch_assoc($p_q) : null;
+        $available = intval($prow['stock_quantity'] ?? 0);
+    }
+
+    if ($available <= 0) {
+        unset($_SESSION['cart'][$key]);
+        $cart_notifications[] = htmlspecialchars($item['product_name']) . " was removed from your cart because it is out of stock.";
+        $checkout_disabled = true;
+        continue;
+    }
+
+    if ($item['quantity'] > $available) {
+        $_SESSION['cart'][$key]['quantity'] = $available;
+        $cart_notifications[] = htmlspecialchars($item['product_name']) . " quantity reduced to available stock ({$available}).";
+        $checkout_disabled = true;
+    }
+
+    $subtotal += $item['price'] * $_SESSION['cart'][$key]['quantity'];
+    $total_items += $_SESSION['cart'][$key]['quantity'];
 }
 
 $total = $subtotal; // No tax or shipping for now
@@ -82,6 +113,15 @@ $total = $subtotal; // No tax or shipping for now
                     <i class="bi bi-check-circle me-2"></i><?php echo $success; ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
+            <?php endif; ?>
+
+            <?php if (!empty($cart_notifications)): ?>
+                <?php foreach ($cart_notifications as $note): ?>
+                    <div class="alert alert-warning alert-dismissible fade show">
+                        <i class="bi bi-exclamation-triangle me-2"></i><?php echo $note; ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                <?php endforeach; ?>
             <?php endif; ?>
             
             <?php if (!empty($cart_items)): ?>
@@ -184,9 +224,12 @@ $total = $subtotal; // No tax or shipping for now
                                     <strong class="text-primary fs-4" id="total-amount"><?php echo formatCurrency($total); ?></strong>
                                 </div>
                                 
-                                <button type="submit" class="btn btn-success btn-lg w-100 mb-2">
+                                <button type="submit" class="btn btn-success btn-lg w-100 mb-2" <?php echo (!empty($checkout_disabled) ? 'disabled' : ''); ?>>
                                     <i class="bi bi-cart-check me-2"></i>Proceed to Checkout
                                 </button>
+                                <?php if (!empty($checkout_disabled)): ?>
+                                    <div class="small text-muted mt-2">Some items were adjusted or removed due to stock changes. Please review your cart before proceeding.</div>
+                                <?php endif; ?>
                                 
                                 <a href="products.php" class="btn btn-outline-secondary w-100">
                                     <i class="bi bi-arrow-left me-2"></i>Continue Shopping

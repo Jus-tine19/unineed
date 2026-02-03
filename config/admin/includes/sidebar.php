@@ -1,6 +1,6 @@
 <?php
 
-$current_page = basename($_SERVER['PHP_SELF']);
+$current_page = basename($_SERVER['PHP_SELF'], '.php');
 ?>
 <div class="sidebar" id="appSidebar">
     
@@ -16,42 +16,42 @@ $current_page = basename($_SERVER['PHP_SELF']);
     </div>
     
     <nav class="sidebar-nav">
-        <a href="dashboard.php" class="nav-link <?php echo $current_page === 'dashboard.php' ? 'active' : ''; ?>">
+        <a href="dashboard.php" class="nav-link <?php echo $current_page === 'dashboard' ? 'active' : ''; ?>">
             <i class="bi bi-speedometer2"></i>
             <span>Dashboard</span>
         </a>
         
-        <a href="orders.php" class="nav-link <?php echo $current_page === 'orders.php' ? 'active' : ''; ?>">
+        <a href="orders.php" class="nav-link <?php echo $current_page === 'orders' ? 'active' : ''; ?>">
             <i class="bi bi-cart-check"></i>
             <span>Orders</span>
         </a>
         
-        <a href="products.php" class="nav-link <?php echo $current_page === 'products.php' ? 'active' : ''; ?>">
+        <a href="products.php" class="nav-link <?php echo $current_page === 'products' ? 'active' : ''; ?>">
             <i class="bi bi-box-seam"></i>
             <span>Products</span>
         </a>
         
-        <a href="inventory.php" class="nav-link <?php echo $current_page === 'inventory.php' ? 'active' : ''; ?>">
+        <a href="inventory.php" class="nav-link <?php echo $current_page === 'inventory' ? 'active' : ''; ?>">
             <i class="bi bi-boxes"></i>
             <span>Inventory</span>
         </a>
         
-        <a href="users.php" class="nav-link <?php echo $current_page === 'users.php' ? 'active' : ''; ?>">
+        <a href="users.php" class="nav-link <?php echo $current_page === 'users' ? 'active' : ''; ?>">
             <i class="bi bi-people"></i>
             <span>Users</span>
         </a>
         
-        <a href="invoicing.php" class="nav-link <?php echo $current_page === 'invoicing.php' ? 'active' : ''; ?>">
+        <a href="invoicing.php" class="nav-link <?php echo $current_page === 'invoicing' ? 'active' : ''; ?>">
             <i class="bi bi-receipt"></i>
             <span>Invoicing</span>
         </a>
         
-        <a href="reports.php" class="nav-link <?php echo $current_page === 'reports.php' ? 'active' : ''; ?>">
+        <a href="reports.php" class="nav-link <?php echo $current_page === 'reports' ? 'active' : ''; ?>">
             <i class="bi bi-graph-up"></i>
             <span>Reports</span>
         </a>
         
-        <a href="settings.php" class="nav-link <?php echo $current_page === 'settings.php' ? 'active' : ''; ?>">
+        <a href="settings.php" class="nav-link <?php echo $current_page === 'settings' ? 'active' : ''; ?>">
             <i class="bi bi-gear"></i>
             <span>Settings</span>
         </a>

@@ -313,7 +313,7 @@
     }
     
     .product-image {
-        height: 180px;
+        height: 220px; /* slightly larger on mobile */
     }
     
     .product-details {

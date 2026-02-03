@@ -121,7 +121,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label">Phone Number</label>
-                                    <input type="text" class="form-control" name="phone" value="<?php echo htmlspecialchars($user['phone']); ?>" placeholder="09XXXXXXXXX">
+                                    <input type="text" class="form-control" name="phone" value="<?php echo htmlspecialchars($user['phone']); ?>" placeholder="09XXXXXXXXX" maxlength="11" inputmode="numeric" pattern="\d*" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)">
+                                    <small class="text-muted">Only digits, maximum 11 characters.</small>
                                 </div>
                                 <button type="submit" name="update_profile" class="btn btn-primary mt-3">
                                     <i class="bi bi-save me-2"></i>Update Profile

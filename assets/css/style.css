@@ -336,7 +336,7 @@ body {
 
 .product-image {
     width: 100%;
-    height: 220px;
+    height: 280px; /* increased height for a larger thumbnail */
     object-fit: cover;
     background: var(--light);
     transition: transform 0.4s ease;
@@ -346,6 +346,46 @@ body {
     transform: scale(1.1);
 }
 
+/* Modal large image wrapper */
+.modal-image-wrapper {
+    width: 520px; /* target large display similar to provided mock */
+    max-width: 90%;
+    margin: 0 auto 1rem auto;
+    padding: 24px;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    overflow: hidden; /* ensure zoom doesn't overflow */
+}
+
+.modal-product-image {
+    display: block;
+    width: 100%;
+    height: 520px;
+    object-fit: contain;
+    border-radius: 10px;
+    transition: transform 0.45s cubic-bezier(.2,.8,.2,1);
+    transform-origin: center center;
+}
+
+/* Hover zoom effect (desktop only) */
+@media (hover: hover) and (pointer: fine) {
+    .modal-image-wrapper { cursor: zoom-in; }
+    .modal-image-wrapper:hover .modal-product-image {
+        transform: scale(1.18);
+    }
+}
+
+/* explicit zoomed class controlled by JS */
+.modal-product-image.zoomed {
+    transform: scale(1.18) !important;
+}
+.modal-image-wrapper.zoomed { cursor: zoom-out; }
+
+@media (max-width: 768px) {
+    .modal-image-wrapper { width: 360px; padding: 16px; }
+    .modal-product-image { height: 360px; }
+}
 .product-details {
     padding: 20px;
 }

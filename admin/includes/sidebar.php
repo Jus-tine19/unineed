@@ -29,7 +29,7 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link <?php echo $current_page === 'orders' || $current_page === 'invoicing' ? 'active' : ''; ?>" href="orders.php">
+                    <a class="nav-link <?php echo $current_page === 'orders' ? 'active' : ''; ?>" href="orders.php">
                         <i class="bi bi-receipt"></i>
                         <span class="label">Orders</span>
                     </a>
@@ -47,8 +47,8 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link <?php echo $current_page === 'invoice' ? 'active' : ''; ?>" href="invoicing.php">
-                        <i class="bi bi-box-seam"></i>
+                    <a class="nav-link <?php echo $current_page === 'invoicing' ? 'active' : ''; ?>" href="invoicing.php">
+                        <i class="bi bi-journal-check"></i>
                         <span class="label">Invoice</span>
                     </a>
                 </li>

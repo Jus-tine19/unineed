@@ -75,6 +75,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_upload']) && iss
         $full_name = isset($data[1]) ? clean($data[1]) : '';
         $email = isset($data[2]) ? clean($data[2]) : '';
         $phone = isset($data[3]) ? clean($data[3]) : '';
+        // normalize phone: keep digits only and trim to 11
+        $phone = preg_replace('/\D+/', '', $phone);
+        if (strlen($phone) > 11) $phone = substr($phone, 0, 11);
         $course = isset($data[4]) ? clean($data[4]) : '';
         $year_level = isset($data[5]) ? clean($data[5]) : '';
         $section = isset($data[6]) ? clean($data[6]) : '';
@@ -370,7 +373,7 @@ $users = mysqli_query($conn, $query);
                                                             </div>
                                                             <div class="mb-3">
                                                                 <label class="form-label">Phone</label>
-                                                                <input type="text" class="form-control" name="phone" value="<?php echo htmlspecialchars($user['phone']); ?>">
+                                                                <input type="text" class="form-control" name="phone" value="<?php echo htmlspecialchars($user['phone']); ?>" maxlength="11" inputmode="numeric" pattern="\d*" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)">
                                                             </div>
                                                             <div class="mb-3">
                                                                 <label class="form-label">Student ID</label>
@@ -471,7 +474,7 @@ $users = mysqli_query($conn, $query);
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Phone</label>
-                            <input type="text" class="form-control" name="phone" placeholder="09XXXXXXXXX">
+                            <input type="text" class="form-control" name="phone" placeholder="09XXXXXXXXX" maxlength="11" inputmode="numeric" pattern="\d*" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Student ID</label>

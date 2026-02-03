@@ -205,23 +205,45 @@ $categories = mysqli_query($conn, $categories_query);
                                     $imgSrc = '';
                                     if (!empty($product['image_path'])) $imgSrc = $product['image_path'];
                                     elseif (!empty($product['image_url'])) $imgSrc = $product['image_url'];
-                                ?>
-                                <?php if ($imgSrc): ?>
-                                    <?php
-                                        // Normalize image path for absolute URL
-                                        $imgSrcNorm = $imgSrc;
-                                        // If it's a relative path, make it absolute from root
-                                        if (!preg_match('/^(https?:)?\\/\\//i', $imgSrcNorm)) {
-                                            // Remove leading ../ or /
-                                            $imgSrcNorm = ltrim($imgSrcNorm, '/.');
-                                            // Build absolute path from domain root
-                                            $imgSrcNorm = '/' . $imgSrcNorm;
+
+                                    $appBase = rtrim(dirname($_SERVER['SCRIPT_NAME'], 2), '/');
+                                    $imgFound = false;
+                                    $imgSrcNorm = '';
+
+                                    if ($imgSrc) {
+                                        // External URL or protocol-relative
+                                        if (preg_match('/^(https?:)?\\/\\//i', $imgSrc)) {
+                                            $imgSrcNorm = $imgSrc;
+                                            $imgFound = true;
+                                        } else {
+                                            $rel = ltrim($imgSrc, '/.');
+                                            $candidate = ($appBase === '' ? '/' : $appBase . '/') . $rel;
+                                            if (substr($candidate, 0, 1) !== '/') $candidate = '/' . $candidate;
+
+                                            $filePath = rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') . $candidate;
+                                            if (file_exists($filePath)) {
+                                                $imgSrcNorm = $candidate;
+                                                $imgFound = true;
+                                            } else {
+                                                // try placeholder (use existing avatar if we don't have a product placeholder)
+                                                $placeholder = ($appBase === '' ? '/assets/images/avatar.png' : $appBase . '/assets/images/avatar.png');
+                                                $placeholderFile = rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') . $placeholder;
+                                                if (file_exists($placeholderFile)) {
+                                                    $imgSrcNorm = $placeholder;
+                                                    $imgFound = true;
+                                                } else {
+                                                    $imgFound = false;
+                                                }
+                                            }
                                         }
-                                    ?>
+                                    }
+                                ?>
+
+                                <?php if ($imgFound): ?>
                                     <img src="<?php echo htmlspecialchars($imgSrcNorm); ?>" 
                                          alt="<?php echo htmlspecialchars($product['product_name']); ?>" 
                                          class="product-image"
-                                         onerror="this.onerror=null; this.src='/assets/images/product-placeholder.jpg';">
+                                         onerror="this.onerror=null; this.src='<?php echo htmlspecialchars(($appBase === '' ? '' : $appBase) . '/assets/images/product-placeholder.jpg'); ?>';">
                                 <?php else: ?>
                                     <div class="product-image d-flex align-items-center justify-content-center">
                                         <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
@@ -289,7 +311,7 @@ $categories = mysqli_query($conn, $categories_query);
                         
                         <!-- Add to Cart Modal -->
                         <div class="modal fade" id="addModal<?php echo $product['product_id']; ?>" tabindex="-1">
-                            <div class="modal-dialog modal-lg">
+                            <div class="modal-dialog modal-xl">
                                         <div class="modal-content" style="border: none; box-shadow: 0 5px 30px rgba(0,0,0,0.15);">
                                             <form method="POST">
                                                 <div class="modal-header" style="border-bottom: 2px solid #f0f0f0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
@@ -305,18 +327,45 @@ $categories = mysqli_query($conn, $categories_query);
                                                             if (!empty($product['image_path'])) $modalImg = $product['image_path'];
                                                             elseif (!empty($product['image_url'])) $modalImg = $product['image_url'];
                                                         ?>
-                                                        <?php if ($modalImg): ?>
-                                                            <?php
-                                                                $modalImgNorm = $modalImg;
-                                                                if (!preg_match('/^(https?:)?\\/\\//i', $modalImgNorm)) {
-                                                                    // Remove leading ../ or /
-                                                                    $modalImgNorm = ltrim($modalImgNorm, '/.');
-                                                                    // Build absolute path from domain root
-                                                                    $modalImgNorm = '/' . $modalImgNorm;
+                                                        <?php
+                                                            $modalImgNorm = '';
+                                                            $modalFound = false;
+                                                            $appBase = rtrim(dirname($_SERVER['SCRIPT_NAME'], 2), '/');
+                                                            if (!empty($product['image_path'])) $modalImg = $product['image_path'];
+                                                            elseif (!empty($product['image_url'])) $modalImg = $product['image_url'];
+
+                                                            if (!empty($modalImg)) {
+                                                                if (preg_match('/^(https?:)?\\/\\//i', $modalImg)) {
+                                                                    $modalImgNorm = $modalImg;
+                                                                    $modalFound = true;
+                                                                } else {
+                                                                    $rel = ltrim($modalImg, '/.');
+                                                                    $candidate = ($appBase === '' ? '/' : $appBase . '/') . $rel;
+                                                                    if (substr($candidate, 0, 1) !== '/') $candidate = '/' . $candidate;
+
+                                                                    $filePath = rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') . $candidate;
+                                                                    if (file_exists($filePath)) {
+                                                                        $modalImgNorm = $candidate;
+                                                                        $modalFound = true;
+                                                                    } else {
+                                                                        $placeholder = ($appBase === '' ? '/assets/images/avatar.png' : $appBase . '/assets/images/avatar.png');
+                                                                        if (file_exists(rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') . $placeholder)) {
+                                                                            $modalImgNorm = $placeholder;
+                                                                            $modalFound = true;
+                                                                        }
+                                                                    }
                                                                 }
+                                                            }
                                                             ?>
-                                                            <img src="<?php echo htmlspecialchars($modalImgNorm); ?>" alt="<?php echo htmlspecialchars($product['product_name']); ?>" style="max-width: 100%; max-height: 380px; border-radius: 12px; border: 2px solid #e9ecef; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-                                                        <?php endif; ?>
+                                                            <?php if ($modalFound): ?>
+                                                            <div class="modal-image-wrapper">
+                                                                <img src="<?php echo htmlspecialchars($modalImgNorm); ?>" alt="<?php echo htmlspecialchars($product['product_name']); ?>" class="modal-product-image" onerror="this.onerror=null; this.src='<?php echo htmlspecialchars(($appBase === '' ? '' : $appBase) . '/assets/images/avatar.png'); ?>';">
+                                                            </div>
+                                                            <?php else: ?>
+                                                                <div class="product-image d-flex align-items-center justify-content-center" style="height: 300px;">
+                                                                    <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
+                                                                </div>
+                                                            <?php endif; ?>
                                                     </div>
 
                                                     <div class="mb-4 pb-3 border-bottom">
@@ -327,6 +376,12 @@ $categories = mysqli_query($conn, $categories_query);
                                                             </div>
                                                         </div>
                                                         <p class="text-muted mb-2" style="line-height: 1.6;"><?php echo htmlspecialchars($product['description']); ?></p>
+                                                        <?php
+                                                        // Fetch variants for this product
+                                                        $variants_query = "SELECT DISTINCT variant_type FROM product_variants WHERE product_id = " . $product['product_id'] . " ORDER BY variant_type";
+                                                        $variants_result = mysqli_query($conn, $variants_query);
+                                                        $has_variants = mysqli_num_rows($variants_result) > 0;
+                                                        ?>
                                                         <?php if (!$has_variants): ?>
                                                             <?php if (empty($product['is_preorder']) || $product['is_preorder'] == 0): ?>
                                                             <p class="fw-bold mb-0" style="font-size: 1.3rem; color: #27ae60;">Base Price: <?php echo formatCurrency($product['price']); ?></p>
@@ -467,5 +522,31 @@ $categories = mysqli_query($conn, $categories_query);
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../assets/js/script.js"></script>
     <script src="../assets/js/product-variants-shop.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add hover and click zoom behavior for modal images
+        document.querySelectorAll('.modal-image-wrapper').forEach(function(wrapper) {
+            var img = wrapper.querySelector('.modal-product-image');
+            if (!img) return;
+
+            wrapper.addEventListener('mouseenter', function() {
+                img.classList.add('zoomed');
+                wrapper.classList.add('zoomed');
+            });
+            wrapper.addEventListener('mouseleave', function() {
+                img.classList.remove('zoomed');
+                wrapper.classList.remove('zoomed');
+            });
+
+            // For touch devices, toggle zoom on tap
+            wrapper.addEventListener('click', function(e) {
+                if (window.matchMedia('(hover: none)').matches) {
+                    img.classList.toggle('zoomed');
+                    wrapper.classList.toggle('zoomed');
+                }
+            });
+        });
+    });
+    </script>
 </body>
 </html>

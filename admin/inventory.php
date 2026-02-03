@@ -421,11 +421,14 @@ $movements = mysqli_query($conn, $movements_query);
                                         <td><?php echo $movement['new_quantity']; ?></td>
                                         <td>
                                             <?php 
-                                            $type_class = [
+                                            $type_class_map = [
                                                 'add' => 'success',
+                                                'sale' => 'danger',
                                                 'subtract' => 'danger',
-                                                'adjustment' => 'warning'
-                                            ][$movement['movement_type']];
+                                                'adjustment' => 'warning',
+                                                'return' => 'success'
+                                            ];
+                                            $type_class = $type_class_map[$movement['movement_type']] ?? 'secondary';
                                             ?>
                                             <span class="badge bg-<?php echo $type_class; ?>">
                                                 <?php echo ucfirst($movement['movement_type']); ?>

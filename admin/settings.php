@@ -142,7 +142,7 @@ $current_gcash_name = GCASH_NAME;
                         <div class="card-body">
                             <form method="POST">
                                 <div class="mb-3"><label class="form-label">Full Name</label><input type="text" class="form-control" name="full_name" value="<?php echo htmlspecialchars($user['full_name']); ?>" required></div>
-                                <div class="mb-3"><label class="form-label">Phone Number</label><input type="text" class="form-control" name="phone" value="<?php echo htmlspecialchars($user['phone']); ?>"></div>
+                                <div class="mb-3"><label class="form-label">Phone Number</label><input type="text" class="form-control" name="phone" value="<?php echo htmlspecialchars($user['phone']); ?>" maxlength="11" inputmode="numeric" pattern="\d*" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)"></div>
                                 <button type="submit" name="update_profile" class="btn btn-primary"><i class="bi bi-save me-2"></i>Update Profile</button>
                             </form>
                         </div>
