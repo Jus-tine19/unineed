@@ -31,6 +31,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['full_name'] = $user['full_name'];
             $_SESSION['user_type'] = $user['user_type'];
             
+            // If student still has the default password, require a password change on first login
+            if ($user['user_type'] === 'student' && password_verify('@Student01', $user['password'])) {
+                $_SESSION['require_password_change'] = true;
+            }
+
             if ($user['user_type'] === 'admin') {
                 header('Location: admin/dashboard.php');
             } else {

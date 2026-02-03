@@ -109,6 +109,20 @@ function requireStudent() {
         header('Location: /unineeds/admin/dashboard.php');
         exit();
     }
+
+    // Force password change on first login if default password still set
+    global $conn;
+    if (isset($_SESSION['user_id']) && !isset($_SESSION['require_password_change']) && basename($_SERVER['PHP_SELF']) !== 'settings.php') {
+        $user_id = intval($_SESSION['user_id']);
+        $res = mysqli_query($conn, "SELECT password FROM users WHERE user_id = $user_id LIMIT 1");
+        if ($res && $row = mysqli_fetch_assoc($res)) {
+            if (password_verify('@Student01', $row['password'])) {
+                $_SESSION['require_password_change'] = true;
+                header('Location: /unineeds/student/settings.php?force_change=1');
+                exit();
+            }
+        }
+    }
 }
 
 // Sanitize input string

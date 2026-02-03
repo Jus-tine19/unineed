@@ -37,10 +37,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
              }
              // Status is now 'pending' (processing) which is the new submitted status.
         } elseif ($status === 'completed') {
-             // If marking as completed, set payment status to fully_paid (assuming final cash payment made)
-             $update_invoice = "UPDATE invoices SET payment_status = 'fully_paid' WHERE order_id = $order_id AND payment_status != 'fully_paid'";
+             // If marking as completed, set invoice to paid and record payment amounts (assume final payment collected)
+             $update_invoice = "UPDATE invoices i 
+                                JOIN orders o ON i.order_id = o.order_id
+                                SET i.payment_status = 'paid', 
+                                    i.amount_paid = o.total_amount, 
+                                    i.balance_due = 0,
+                                    i.remaining_balance = 0,
+                                    i.payment_date = NOW()
+                                WHERE i.order_id = $order_id AND i.payment_status != 'paid'";
              if (!mysqli_query($conn, $update_invoice)) {
-                 throw new Exception('Failed to update invoice payment status to fully paid: ' . mysqli_error($conn));
+                 throw new Exception('Failed to update invoice payment status to paid: ' . mysqli_error($conn));
              }
         }
         
@@ -228,7 +235,8 @@ $orders = mysqli_query($conn, $query);
                                                 $payment_badge_class = 'secondary';
                                                 if (isset($order['payment_status'])) {
                                                     switch ($order['payment_status']) {
-                                                        case 'fully_paid': $payment_badge_class = 'success'; break;
+                                                        case 'fully_paid':
+                                                        case 'paid': $payment_badge_class = 'success'; break;
                                                         case 'downpayment_paid': $payment_badge_class = 'primary'; break;
                                                         case 'pending_proof': $payment_badge_class = 'warning'; break;
                                                         case 'unpaid': $payment_badge_class = 'danger'; break;
@@ -281,7 +289,7 @@ $orders = mysqli_query($conn, $query);
                                                 <div class="order-details-content">
                                                     <?php
                                                     // Re-select order details including full invoice information for the detail view
-                                                    $detail_q = "SELECT o.*, i.payment_status, i.down_payment_due, i.remaining_balance, i.payment_proof_path 
+                                                    $detail_q = "SELECT o.*, i.payment_status, i.down_payment_due, i.remaining_balance, i.amount_paid, i.balance_due, i.payment_proof_path 
                                                                  FROM orders o 
                                                                  LEFT JOIN invoices i ON o.order_id = i.order_id 
                                                                  WHERE o.order_id = {$order['order_id']}";
@@ -320,8 +328,23 @@ $orders = mysqli_query($conn, $query);
                                                             <h6>Financials</h6>
                                                             <p class="mb-1"><strong>Total Amount:</strong> <strong class="text-success"><?php echo formatCurrency($detail_data['total_amount'] ?? 0); ?></strong></p>
                                                             <p class="mb-1"><strong>Payment Status:</strong> <span class="badge bg-<?php echo $payment_badge_class; ?>"><?php echo ucfirst(str_replace('_', ' ', $detail_data['payment_status'] ?? 'N/A')); ?></span></p>
-                                                            <p class="mb-1"><strong>Down Payment Due:</strong> <?php echo formatCurrency($detail_data['down_payment_due'] ?? 0); ?></p>
-                                                            <p class="mb-1"><strong>Remaining Balance:</strong> <?php echo formatCurrency($detail_data['remaining_balance'] ?? 0); ?></p>
+                                                            <?php if ($order['payment_method'] !== 'cash_on_pickup'): ?>
+                                                                <p class="mb-1"><strong>Down Payment Due:</strong> <?php echo formatCurrency($detail_data['down_payment_due'] ?? 0); ?></p>
+                                                                <p class="mb-1"><strong>Remaining Balance:</strong> <?php echo formatCurrency($detail_data['remaining_balance'] ?? 0); ?></p>
+                                                            <?php else: ?>
+                                                                <p class="mb-1"><strong>Amount Paid / Due:</strong>
+                                                                    <?php
+                                                                    $amt_paid = floatval($detail_data['amount_paid'] ?? 0);
+                                                                    $bal_due = floatval($detail_data['balance_due'] ?? ($detail_data['total_amount'] ?? 0) - $amt_paid);
+                                                                    if ($amt_paid > 0) {
+                                                                        echo formatCurrency($amt_paid) . ' (paid)';
+                                                                    } else {
+                                                                        echo formatCurrency($bal_due) . ' (amount due on pickup)';
+                                                                    }
+                                                                    ?>
+                                                                    (Cash on Pickup)
+                                                                </p>
+                                                            <?php endif; ?>
                                                         </div>
                                                     </div>
                                                     
@@ -411,7 +434,7 @@ $orders = mysqli_query($conn, $query);
                                                                     <?php
                                                                     // MODIFIED: Added 'pending_payment'
                                                                     $statusOptions = [
-                                                                        'pending_payment' => 'Pending Payment (Waiting Proof)',
+                                                                       
                                                                         'pending' => 'Pending (Processing)',
                                                                         'ready for pickup' => 'Ready for Pickup',
                                                                         'completed' => 'Completed',

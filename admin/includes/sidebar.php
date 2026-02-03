@@ -47,6 +47,12 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link <?php echo $current_page === 'invoice' ? 'active' : ''; ?>" href="invoicing.php">
+                        <i class="bi bi-box-seam"></i>
+                        <span class="label">Invoice</span>
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link <?php echo $current_page === 'reports' ? 'active' : ''; ?>" href="reports.php">
                         <i class="bi bi-file-earmark-text"></i>
                         <span class="label">Reports</span>

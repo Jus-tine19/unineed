@@ -91,6 +91,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
             </div>
             <?php endif; ?>
 
+            <?php if (isset($_SESSION['require_password_change']) || isset($_GET['force_change'])): ?>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Action Required:</strong> You must change your default password before continuing.
+                </div>
+            <?php endif; ?>
+
             <div class="row g-4">
                 <!-- Profile Information -->
                 <div class="col-md-6">

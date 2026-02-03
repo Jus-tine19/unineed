@@ -117,7 +117,7 @@ if (isset($_GET['id'])) {
                                         <?php if ($order_details['invoice_number']): ?>
                                             <p class="mb-2"><strong>Invoice:</strong> <?php echo htmlspecialchars($order_details['invoice_number']); ?></p>
                                             <p class="mb-2"><strong>Payment Status:</strong> 
-                                                <span class="badge bg-<?php echo ($order_details['payment_status'] === 'fully_paid') ? 'success' : 'danger'; ?>">
+                                                <span class="badge bg-<?php echo (in_array($order_details['payment_status'], ['fully_paid','paid'])) ? 'success' : 'danger'; ?>">
                                                     <?php echo ucfirst(str_replace('_', ' ', $order_details['payment_status'])); ?>
                                                 </span>
                                             </p>
@@ -141,7 +141,13 @@ if (isset($_GET['id'])) {
                                                 $down_payment = floatval($order_details['down_payment_due'] ?? 0);
                                                 $total_amount = floatval($order_details['total_amount']);
                                                 
-                                                // Determine payment type based on amount paid
+                                                // If invoice/payment status indicates fully paid/paid or order is completed but amount_paid isn't set, treat it as fully paid
+                                                if ((in_array($order_details['payment_status'], ['fully_paid','paid']) || $order_details['order_status'] === 'completed') && $amount_paid <= 0) {
+                                                    $amount_paid = $total_amount;
+                                                    $balance_due = 0;
+                                                }
+                                                
+                                                // Determine payment type based on amount paid and method
                                                 $payment_type = '';
                                                 if ($order_details['payment_method'] === 'gcash') {
                                                     if ($amount_paid >= $total_amount) {
@@ -150,7 +156,11 @@ if (isset($_GET['id'])) {
                                                         $payment_type = ' (Downpayment via GCash)';
                                                     }
                                                 } elseif ($order_details['payment_method'] === 'cash_on_pickup') {
-                                                    $payment_type = ' (Cash on Pickup)';
+                                                    if ($amount_paid >= $total_amount) {
+                                                        $payment_type = ' (Full Payment - Cash on Pickup)';
+                                                    } else {
+                                                        $payment_type = ' (Cash on Pickup)';
+                                                    }
                                                 }
                                                 ?>
                                                 <p class="mb-2"><strong>Amount Paid:</strong></p>
@@ -375,75 +385,10 @@ if (isset($_GET['id'])) {
                             </div>
                         <?php endif; ?>
 
-                        <div class="card mb-3">
-                            <div class="card-header">
-                                <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Order Information</h6>
-                            </div>
-                            <div class="card-body">
-                                <?php if ($order_details['order_status'] === 'pending_payment'): ?>
-                                    <div class="alert alert-secondary">
-                                        <i class="bi bi-hourglass-split me-2"></i>
-                                        <strong>Payment Pending Verification</strong>
-                                        <p class="mb-0 mt-2 small">Order processing awaits payment confirmation. Use the section above to submit proof if you paid via GCash.</p>
-                                    </div>
-                                <?php elseif ($order_details['order_status'] === 'pending'): ?>
-                                    <div class="alert alert-warning">
-                                        <i class="bi bi-clock-history me-2"></i>
-                                        <strong>Order Processing</strong>
-                                        <p class="mb-0 mt-2 small">Your order is being processed. You'll be notified when it's ready for pickup.</p>
-                                    </div>
-                                    <div class="d-grid">
-                                        <button class="btn btn-danger btn-sm" onclick="cancelOrder(<?php echo $order_details['order_id']; ?>)">
-                                            <i class="bi bi-x-circle me-2"></i>Cancel Order
-                                        </button>
-                                    </div>
-                                <?php elseif ($order_details['order_status'] === 'ready for pickup'): ?>
-                                    <div class="alert alert-info">
-                                        <i class="bi bi-box-seam me-2"></i>
-                                        <strong>Ready for Pickup</strong>
-                                        <p class="mb-0 mt-2 small">Your order is ready! Please visit us to pick up.</p>
-                                    </div>
-                                    
-                                    <?php 
-                                    $balance_due = floatval($order_details['balance_due'] ?? $order_details['remaining_balance'] ?? 0);
-                                    if ($balance_due > 0):
-                                    ?>
-                                        <div class="card border-danger mt-3" style="display: block !important;">
-                                            <div class="card-header bg-danger text-white">
-                                                <h6 class="mb-0"><i class="bi bi-cash-coin me-2"></i>Balance Due</h6>
-                                            </div>
-                                            <div class="card-body">
-                                                <h4 class="text-danger mb-3">₱<?php echo number_format($balance_due, 2); ?></h4>
-                                                <p class="small text-muted mb-2">You must pay the remaining balance when claiming your order.</p>
-                                                <div class="alert alert-warning alert-sm p-2 mb-0">
-                                                    <small><i class="bi bi-exclamation-triangle me-1"></i>Payment is required to complete your order.</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    <?php else: ?>
-                                        <div class="alert alert-success mt-3">
-                                            <i class="bi bi-check-circle me-2"></i>
-                                            <strong>Fully Paid!</strong> You can claim your order now.
-                                        </div>
-                                    <?php endif; ?>
-                                <?php elseif ($order_details['order_status'] === 'completed'): ?>
-                                    <div class="alert alert-success">
-                                        <i class="bi bi-check-circle me-2"></i>
-                                        <strong>Order Completed</strong>
-                                        <p class="mb-0 mt-2 small">Thank you for your order!</p>
-                                    </div>
-                                <?php endif; ?>
-                                
-                                <h6 class="mt-3">Need Help?</h6>
-                                <p class="small text-muted mb-2">Contact us if you have any questions about your order.</p>
-                                <button class="btn btn-outline-primary btn-sm w-100">
-                                    <i class="bi bi-chat-dots me-2"></i>Contact Support
-                                </button>
-                            </div>
-                        </div>
+                        <!-- 'Order Information' card intentionally removed per request -->
                         
                             <?php if ($order_details['order_status'] === 'completed'): ?>
-                                <?php if ($order_details['payment_status'] === 'fully_paid'): ?>
+                                <?php if (in_array($order_details['payment_status'], ['fully_paid','paid'])): ?>
                                 <div class="card mb-3">
                                     <div class="card-body text-center">
                                         <i class="bi bi-file-pdf text-danger" style="font-size: 3rem;"></i>
