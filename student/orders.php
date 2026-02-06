@@ -63,10 +63,15 @@ if (isset($_GET['id'])) {
             </button>
             <h2><?php echo $order_details ? 'Order Details' : 'My Orders'; ?></h2>
             <?php if ($order_details): ?>
-                <div class="ms-auto">
+                <div class="ms-auto d-flex">
                     <a href="orders.php" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left me-2"></i>Back to Orders
                     </a>
+                        <?php if (!in_array($order_details['order_status'], ['completed','cancelled'])): ?>
+                        <button class="btn btn-danger ms-2" data-bs-toggle="modal" data-bs-target="#cancelOrderModal" data-order-id="<?php echo $order_details['order_id']; ?>">
+                            <i class="bi bi-x-lg me-2"></i>Cancel Order
+                        </button>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
         </div>
@@ -444,9 +449,14 @@ if (isset($_GET['id'])) {
                                             </div>
                                         </div>
                                         
-                                        <a href="orders.php?id=<?php echo $order['order_id']; ?>" class="btn btn-primary btn-sm w-100">
+                                        <a href="orders.php?id=<?php echo $order['order_id']; ?>" class="btn btn-primary btn-sm w-100 mb-2">
                                             <i class="bi bi-eye me-2"></i>View Details
                                         </a>
+                                        <?php if (!in_array($order['order_status'], ['completed','cancelled'])): ?>
+                                            <button class="btn btn-danger btn-sm w-100" data-bs-toggle="modal" data-bs-target="#cancelOrderModal" data-order-id="<?php echo $order['order_id']; ?>">
+                                                <i class="bi bi-x-lg me-2"></i>Cancel Order
+                                            </button>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
@@ -469,8 +479,56 @@ if (isset($_GET['id'])) {
         </div>
     </div>
     
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="../assets/js/script.js"></script>
+        <!-- Cancel Order Modal -->
+        <div class="modal fade" id="cancelOrderModal" tabindex="-1" aria-labelledby="cancelOrderModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-scrollable modal-fullscreen-sm-down" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="cancelOrderModalLabel">Select reason</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+
+                      <div class="modal-body">
+                        <input type="hidden" id="cancel_order_id" value="">
+
+                        <div id="cancel_reasons_list">
+                                <div class="list-group">
+                                        <label class="list-group-item">
+                                            <input class="form-check-input me-2" type="radio" name="cancel_reason_radio" value="changed_mind"> Changed mind
+                                        </label>
+                                        <label class="list-group-item">
+                                            <input class="form-check-input me-2" type="radio" name="cancel_reason_radio" value="wrong_item"> Wrong item ordered
+                                        </label>
+                                        <label class="list-group-item">
+                                            <input class="form-check-input me-2" type="radio" name="cancel_reason_radio" value="change_size"> Change of size
+                                        </label>
+                                        <label class="list-group-item">
+                                            <input class="form-check-input me-2" type="radio" name="cancel_reason_radio" value="ordered_mistake"> Ordered by mistake
+                                        </label>
+                                        <label class="list-group-item">
+                                            <input class="form-check-input me-2" type="radio" name="cancel_reason_radio" value="other"> Other
+                                        </label>
+                                </div>
+                        </div>
+
+                        <div class="mb-3 mt-3" id="cancel_reason_other_container" style="display:none;">
+                            <label for="cancel_reason_other" class="form-label">If other, please specify</label>
+                            <textarea id="cancel_reason_other" class="form-control" rows="3" placeholder="Type reason here..."></textarea>
+                        </div>
+
+                        <div class="small text-muted mt-3">Note: Payment is non-refundable.</div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                        <button id="cancel_confirm_btn" type="button" class="btn btn-dark w-100" disabled onclick="submitCancelFromModal(this)">Cancel order</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <script src="../assets/js/script.js"></script>
     <script>
         // Function to display alerts
         function showAlert(message, type = 'success') {

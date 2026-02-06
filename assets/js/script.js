@@ -123,18 +123,88 @@ function updateCartCount() {
     }
 }
 
-// Cancel Order (user side) - cancels only if order is pending
+// Cancel Order flow: opens modal to collect reason, then submits
 function cancelOrder(orderId) {
-    if (!confirm('Are you sure you want to cancel this order?')) return;
+    const modalEl = document.getElementById('cancelOrderModal');
+    if (!modalEl) return; // nothing to do if modal is missing
 
-    const btn = document.querySelector(`button[onclick*="cancelOrder(${orderId}"]`);
+    // populate modal order id and reset fields
+    document.getElementById('cancel_order_id').value = orderId;
+    const otherInput = document.getElementById('cancel_reason_other');
+    const otherContainer = document.getElementById('cancel_reason_other_container');
+    // reset radio selection
+    const radios = document.getElementsByName('cancel_reason_radio');
+    for (let i = 0; i < radios.length; i++) radios[i].checked = false;
+    if (otherInput) otherInput.value = '';
+    if (otherContainer) otherContainer.style.display = 'none';
+    const confirmBtn = document.getElementById('cancel_confirm_btn');
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (otherContainer) otherContainer.style.display = 'none';
+
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+function onCancelReasonRadioChange(radio) {
+    const otherContainer = document.getElementById('cancel_reason_other_container');
+    const confirmBtn = document.getElementById('cancel_confirm_btn');
+    if (radio.value === 'other') {
+        if (otherContainer) otherContainer.style.display = 'block';
+    } else {
+        if (otherContainer) otherContainer.style.display = 'none';
+    }
+    if (confirmBtn) confirmBtn.disabled = false;
+}
+
+function submitCancelFromModal(btn) {
+    const orderId = document.getElementById('cancel_order_id').value;
+    // read selected radio
+    const radios = document.getElementsByName('cancel_reason_radio');
+    let selected = '';
+    for (let i = 0; i < radios.length; i++) {
+        if (radios[i].checked) { selected = radios[i].value; break; }
+    }
+    const other = document.getElementById('cancel_reason_other') ? document.getElementById('cancel_reason_other').value : '';
+
+    // Validation
+    if (!selected) {
+        showToast('Please select a reason for cancelling.', 'danger');
+        return;
+    }
+    if (selected === 'other' && (!other || other.trim() === '')) {
+        showToast('Please provide additional details for "Other" reason.', 'danger');
+        return;
+    }
+
+    submitCancel(orderId, selected === 'other' ? other.trim() : selected, btn);
+}
+
+function submitCancel(orderId, reason = null, btn = null) {
+    const confirmBtn = document.getElementById('cancel_confirm_btn');
+    // Defensive client-side check: reason must be provided
+    if (!reason || (typeof reason === 'string' && reason.trim() === '')) {
+        showToast('Please select a reason before confirming cancellation.', 'danger');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = 'Cancel order';
+        }
+        return;
+    }
+
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i class="bi bi-x-circle me-2"></i>Cancelling...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Processing...';
     }
+    // disable radios and textarea while processing
+    const radios = document.getElementsByName('cancel_reason_radio');
+    for (let i = 0; i < radios.length; i++) radios[i].disabled = true;
+    const otherInputEl = document.getElementById('cancel_reason_other');
+    if (otherInputEl) otherInputEl.disabled = true;
+    if (confirmBtn) confirmBtn.disabled = true;
 
     const formData = new FormData();
     formData.append('order_id', orderId);
+    if (reason) formData.append('reason', reason);
 
     fetch('../api/cancel-order.php', {
         method: 'POST',
@@ -144,12 +214,17 @@ function cancelOrder(orderId) {
     .then(data => {
         if (data.success) {
             showToast(data.message, 'success');
-            setTimeout(() => location.reload(), 600);
+            const modalEl = document.getElementById('cancelOrderModal');
+            if (modalEl) {
+                const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                if (modalInstance) modalInstance.hide();
+            }
+            setTimeout(() => location.reload(), 700);
         } else {
             showToast(data.message, 'danger');
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-x-circle me-2"></i>Cancel Order';
+                btn.innerHTML = 'Confirm Cancel';
             }
         }
     })
@@ -158,7 +233,7 @@ function cancelOrder(orderId) {
         showToast('Failed to cancel order. Please try again.', 'danger');
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-x-circle me-2"></i>Cancel Order';
+            btn.innerHTML = 'Confirm Cancel';
         }
     });
 }
@@ -529,4 +604,65 @@ document.addEventListener('DOMContentLoaded', function() {
 // Initialize cart count on page load
 document.addEventListener('DOMContentLoaded', function() {
     updateCartCount();
+});
+
+// Populate/reset modal when it's shown (supports data-bs-toggle buttons)
+document.addEventListener('DOMContentLoaded', function() {
+    const cancelModal = document.getElementById('cancelOrderModal');
+    if (!cancelModal) return;
+
+    cancelModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget; // Button that triggered the modal
+        const orderId = button ? button.getAttribute('data-order-id') : null;
+
+        // reset radios and other field
+        const radios = document.getElementsByName('cancel_reason_radio');
+        for (let i = 0; i < radios.length; i++) { 
+            radios[i].checked = false; 
+            radios[i].disabled = false; 
+            // attach onchange handler explicitly to ensure behavior
+            radios[i].onchange = function() {
+                const otherContainer = document.getElementById('cancel_reason_other_container');
+                const confirmBtn = document.getElementById('cancel_confirm_btn');
+                if (this.value === 'other') {
+                    if (otherContainer) otherContainer.style.display = 'block';
+                } else {
+                    if (otherContainer) otherContainer.style.display = 'none';
+                }
+                if (confirmBtn) confirmBtn.disabled = false;
+            };
+        }
+        const otherInputEl = document.getElementById('cancel_reason_other');
+        const otherContainer = document.getElementById('cancel_reason_other_container');
+        if (otherInputEl) { otherInputEl.value = ''; otherInputEl.disabled = false; }
+        if (otherContainer) otherContainer.style.display = 'none';
+
+        const confirmBtn = document.getElementById('cancel_confirm_btn');
+        if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerHTML = 'Cancel order'; }
+
+        if (orderId) {
+            const hidden = document.getElementById('cancel_order_id');
+            if (hidden) hidden.value = orderId;
+        }
+    });
+});
+
+// Bind change listeners to radio inputs (works if they are dynamically added)
+document.addEventListener('DOMContentLoaded', function() {
+    function handleRadioChange(e) {
+        const radio = e.target;
+        const otherContainer = document.getElementById('cancel_reason_other_container');
+        const confirmBtn = document.getElementById('cancel_confirm_btn');
+        if (radio && radio.name === 'cancel_reason_radio') {
+            if (radio.value === 'other') {
+                if (otherContainer) otherContainer.style.display = 'block';
+            } else {
+                if (otherContainer) otherContainer.style.display = 'none';
+            }
+            if (confirmBtn) confirmBtn.disabled = false;
+        }
+    }
+
+    // delegate to the document so newly inserted radios are handled
+    document.addEventListener('change', handleRadioChange);
 });

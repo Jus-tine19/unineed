@@ -49,12 +49,26 @@ if (!$order_id) {
     exit();
 }
 
+// Extract cancellation reason if provided
+$cancellation_reason = '';
+if (!empty($_POST['reason'])) {
+    $cancellation_reason = trim($_POST['reason']);
+} elseif (is_array($jsonInput) && !empty($jsonInput['reason'])) {
+    $cancellation_reason = trim($jsonInput['reason']);
+}
+
+// Require a cancellation reason
+if (empty($cancellation_reason)) {
+    echo json_encode(['success' => false, 'message' => 'Please provide a reason for cancellation']);
+    exit();
+}
+
 // Verify order exists, is pending, & belongs to user
 $order_query = "SELECT o.*, u.user_id 
                 FROM orders o 
                 JOIN users u ON o.user_id = u.user_id 
                 WHERE o.order_id = ? AND o.user_id = ? 
-                AND o.order_status = 'pending'";
+                AND o.order_status NOT IN ('completed','cancelled')";
 
 $stmt = mysqli_prepare($conn, $order_query);
 if (!$stmt) {
@@ -78,17 +92,23 @@ $order = mysqli_fetch_assoc($result);
 
 // Ensure inventory movements table exists before restoration
 ensureInventoryMovementsTableExists($conn);
+// Ensure orders table has cancellation_reason column
+$col_check_orders = mysqli_query($conn, "SHOW COLUMNS FROM orders LIKE 'cancellation_reason'");
+if (mysqli_num_rows($col_check_orders) === 0) {
+    mysqli_query($conn, "ALTER TABLE orders ADD COLUMN cancellation_reason TEXT NULL AFTER order_status");
+}
 // Begin atomic transaction
 $conn->begin_transaction();
 try {
-    // Update order status to cancelled
-    $update_query = "UPDATE orders SET order_status = 'cancelled' WHERE order_id = ?";
+    // Update order status to cancelled and save reason
+    $update_query = "UPDATE orders SET order_status = 'cancelled', cancellation_reason = ? WHERE order_id = ?";
     $stmt = mysqli_prepare($conn, $update_query);
     if (!$stmt) {
         throw new Exception('Failed to prepare update query: ' . mysqli_error($conn));
     }
-    
-    mysqli_stmt_bind_param($stmt, "i", $order_id);
+
+    // Bind the provided cancellation reason
+    mysqli_stmt_bind_param($stmt, "si", $cancellation_reason, $order_id);
     if (!mysqli_stmt_execute($stmt)) {
         throw new Exception('Failed to update order status: ' . mysqli_stmt_error($stmt));
     }
@@ -142,9 +162,10 @@ try {
 
         // Log movement for product restoration
         $price_at_movement = floatval($prow['price'] ?? 0);
-        $mv_reason = mysqli_real_escape_string($conn, "Order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " cancelled by customer");
-        $ins_mv = "INSERT INTO inventory_movements (product_id, price_at_movement, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) ";
-        $ins_mv .= "VALUES ($product_id, $price_at_movement, $qty, $prev_stock, $new_stock, 'add', '$mv_reason', {$_SESSION['user_id']})";
+        $pretty_reason = $cancellation_reason ? "Reason: " . $cancellation_reason : 'Cancelled by customer';
+        $mv_reason = mysqli_real_escape_string($conn, "Order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " cancelled by customer. " . $pretty_reason);
+            $ins_mv = "INSERT INTO inventory_movements (product_id, price_at_movement, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) ";
+            $ins_mv .= "VALUES ($product_id, $price_at_movement, $qty, $prev_stock, $new_stock, 'add', '$mv_reason', {$_SESSION['user_id']})";
         mysqli_query($conn, $ins_mv);
 
         // Notify admin if product was restocked (from 0 to >0)
@@ -200,6 +221,10 @@ try {
     // Send cancellation notifications
     $adminMsg = "Order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " cancelled by customer.";
     $userMsg = "Order #" . str_pad($order_id, 6, '0', STR_PAD_LEFT) . " cancelled.";
+    if ($cancellation_reason) {
+        $adminMsg .= " Reason: " . mysqli_real_escape_string($conn, $cancellation_reason);
+        $userMsg .= " Reason: " . mysqli_real_escape_string($conn, $cancellation_reason);
+    }
     $adminId = 1;
     
     // Notify admin
