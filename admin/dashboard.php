@@ -77,7 +77,7 @@ $monthly_sales = mysqli_query($conn, $query);
         </div>
         
         <div class="content-area">
-            <div class="row g-4 mb-4">
+            <div class="row g-4 mb-4 align-items-stretch">
                 <div class="col-md-4">
                     <div class="stat-card stat-primary">
                         <div class="stat-icon">

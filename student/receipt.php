@@ -77,171 +77,75 @@ while ($item = mysqli_fetch_assoc($items)) {
     <?php endif; ?>
     <title>Receipt #<?php echo $order['order_id']; ?> - UniNeeds</title>
     <style>
+        /* Professional receipt layout for screen and print */
+        :root {
+            --primary: #0ea55f;
+            --accent: #0aa04a;
+            --muted: #6c757d;
+            --bg: #f7f9f8;
+            --border: #e9efec;
+        }
+
+        body { font-family: Inter, 'Helvetica Neue', Arial, sans-serif; color: #222; margin: 0; padding: 18px; background: transparent; }
+
+        /* Container for copies (print will show two) */
+        .copies { display: flex; gap: 20px; justify-content: center; align-items: flex-start; position: relative; }
+        .copies::before { content: ''; position: absolute; left: 50%; top: 18px; bottom: 18px; width: 1px; border-left: 1px dashed var(--border); transform: translateX(-50%); }
+        .print-only { display: none; }
+
+        /* Single-copy preview for screen */
+        .receipt { width: 360px; box-sizing: border-box; background: #fff; padding: 18px; border-radius: 8px; border: 1px solid var(--border); box-shadow: 0 6px 18px rgba(15, 23, 21, 0.06); }
+        .receipt + .receipt { margin-left: 16px; }
+
+        .receipt-header { padding-bottom: 10px; border-bottom: 1px solid #f0f3f2; text-align: center; }
+        .brand { font-size: 20px; font-weight: 700; color: #0b6a38; letter-spacing: 0.2px; }
+        .tagline { margin-top: 4px; font-size: 12px; color: var(--muted); font-style: italic; }
+
+        .info-section { display: flex; gap: 12px; margin: 14px 0; }
+        .customer-details { flex: 1 1 60%; }
+        .invoice-details { flex: 1 1 40%; text-align: right; }
+        .info-section h4 { margin: 0 0 6px 0; color: var(--primary); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+        .info-section p { margin: 2px 0; font-size: 13px; color: #333; }
+
+        .receipt-table { width: 100%; border-collapse: collapse; margin-top: 8px; border-radius: 6px; overflow: hidden; }
+        .receipt-table thead th { background: var(--primary); color: #fff; padding: 10px 12px; font-weight: 700; font-size: 13px; text-align: left; }
+        .receipt-table tbody td { padding: 10px 12px; border-bottom: 1px solid #f3f6f4; font-size: 13px; color: #333; }
+        .receipt-table tbody tr:last-child td { border-bottom: none; }
+
+        .total-section { margin-top: 14px; padding: 14px; background: linear-gradient(180deg, #fbfff9, #f3f8f6); border: 1px solid #e6f2e9; border-radius: 8px; }
+        .total-amount { font-size: 18px; color: var(--accent); text-align: right; font-weight: 800; }
+
+        .payment-method { margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; text-align: center; border: 1px dashed #d6f0db; }
+        .receipt-footer { margin-top: 12px; padding-top: 6px; text-align: center; font-size: 12px; color: var(--muted); }
+
+        /* Screen: center a single copy */
+        @media screen {
+            .copies { justify-content: center; }
+            .copies::before { display: none; }
+            .receipt { width: 420px; }
+            .print-only { display: none !important; }
+        }
+
+        /* Print adjustments - two copies side-by-side */
         @media print {
-            body { 
-                margin: 0;
-                padding: 15px;
-            }
-            .no-print {
-                display: none !important;
-            }
-        }
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-        }
-        .receipt {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #fff;
-            box-shadow: 0 0 20px rgba(0,0,0,0.1);
-        }
-        
-        .receipt-header {
-            position: relative;
-            padding: 10px 0;
-            border-bottom: 2px solid #ddd;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-        .company-info {
-            text-align: center;
-          
-        }
-        .company-info .tagline {
-            font-style: italic;
-            color: #666;
-        }
-        .receipt-title {
-            text-align: center;
-            color: #333;
-            font-size: 14px;
-            margin: 10px 0;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .info-section {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-        .customer-details, .invoice-details {
-            flex: 1;
-        }
-        .invoice-details {
-            text-align: right;
-        }
-        .info-section h4 {
-            color: #137a21ff;
-            margin-bottom: 5px;
-            font-size: 12px;
-        }
-        .receipt-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            background: white;
-        }
-        .receipt-table th {
-            background: #00cc44ff;
-            color: white;
-            padding: 12px;
-            font-weight: 500;
-        }
-        .receipt-table td {
-            padding: 10px;
-            border-bottom: 1px solid #dee2e6;
-        }
-        .receipt-table tr:nth-child(even) {
-            background-color: #f8f9fa;
-        }
-        .text-end {
-            text-align: right;
-        }
-        .total-section {
-            margin: 20px 0;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-        .total-amount {
-            font-size: 18px;
-            color: #20a706ff;
-            text-align: right;
-        }
-        .payment-method {
-            margin-top: 20px;
-            padding: 15px;
-            background: #e9ecef;
-            border-radius: 8px;
-            text-align: center;
-            border: 1px dashed #0f9c33ff;
-        }
-        .receipt-footer {
-            margin-top: 10px;
-            padding-top: 20px;
-            border-top: 1px solid #dee2e6;
-            text-align: center;
-            font-size: 12px;
-            color: #6c757d;
-        }
-        .watermark {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-45deg);
-            font-size: 100px;
-            opacity: 0.03;
-            pointer-events: none;
-            z-index: 1000;
-            white-space: nowrap;
-        }
-        @media print {
-            body {
-                display: flex;
-                justify-content: center;
-                align-items: flex-start;
-            }
-            .receipt {
-                width: 104mm;
-                max-width: none;
-                margin: 1mm;
-                padding: 3mm;
-                box-shadow: none;
-                flex-shrink: 0;
-                border: 1px dashed #000;
-            }
-            .no-print {
-                display: none;
-            }
-            @page {
-                size: letter;
-                margin: 10mm;
-            }
+            body { padding: 8px; }
+            .copies { gap: 12px; }
+            .copies::before { left: 50%; top: 8mm; bottom: 8mm; }
+            .print-only { display: block; }
+            .receipt { width: 104mm; padding: 6mm; border: none; border-radius: 0; box-shadow: none; }
+            .receipt + .receipt { margin-left: 0; }
+            /* Cut guide visible when printing/PDF */
+            .cut-guide { display: block; margin: 18px auto; width: 100%; max-width: 220mm; border-top: 2px dashed #cfcfcf; height: 1px; position: relative; }
+            .cut-guide::before { content: '✂︎ CUT HERE ✂︎'; position: absolute; top: -8px; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 8px; color: var(--muted); font-size: 12px; }
+            @page { size: letter; margin: 6mm; }
         }
     </style>
 </head>
 <body>
-    <?php if (!$output_pdf): ?>
-    <div class="no-print mb-3">
-        <button onclick="window.print()" class="btn btn-primary">
-            <i class="bi bi-printer"></i> Print Receipt
-        </button>
-        <a href="receipt.php?order_id=<?php echo $order_id; ?>&download=pdf" class="btn btn-success">
-            <i class="bi bi-download"></i> Download PDF
-        </a>
-        <a href="orders.php" class="btn btn-secondary">
-            <i class="bi bi-arrow-left"></i> Back to Orders
-        </a>
-    </div>
-    <?php endif; ?>
+    <?php /* Download PDF removed per request - keep modal/iframe Download in admin only */ ?>
 
-    <?php for ($copy = 1; $copy <= ($output_pdf ? 1 : 2); $copy++): ?>
+    <div class="copies">
+    <!-- First (visible in preview and print) -->
     <div class="receipt">
         <div class="receipt-header">
             
@@ -304,11 +208,76 @@ while ($item = mysqli_fetch_assoc($items)) {
         </div>
 
     </div>
-    <?php endfor; ?>
+    <?php if (!$output_pdf): // Render second copy only for screen/print (not for PDF download) ?>
+    <!-- Second copy: hidden in screen preview, visible when printing -->
+    <div class="receipt print-only">
+        <div class="receipt-header">
+            <h2>UniNeeds Store</h2>
+            <h5><p><i>Study ready. Style steady.</i></p></h5>
+        </div>
+
+        <div class="info-section">
+            <div class="customer-details">
+                <h4>Customer Information</h4>
+                <p><strong><?php echo htmlspecialchars($order['full_name']); ?></strong></p>
+                <p><?php echo htmlspecialchars($order['email']); ?></p>
+                <p><?php echo htmlspecialchars($order['phone']); ?></p>
+            </div>
+
+            <div class="invoice-details">
+                <h4>Invoice Details</h4>
+                <p><strong>Invoice #:</strong> <?php echo str_pad($order['order_id'], 6, '0', STR_PAD_LEFT); ?></p>
+                <p><strong>Date:</strong> <?php echo date('F j, Y', strtotime($order['order_date'])); ?></p>
+            </div>
+        </div>
+
+        <table class="receipt-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th style="width: 100px;">Quantity</th>
+                    <th style="width: 120px;" class="text-end">Price</th>
+                    <th style="width: 120px;" class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php 
+                $total2 = 0;
+                foreach ($item_list as $item):
+                    $itemTotal2 = $item['price'] * $item['quantity'];
+                    $total2 += $itemTotal2;
+                ?>
+                    <tr>
+                        <td>
+                            <?php echo htmlspecialchars($item['product_name']); ?>
+                        </td>
+                        <td class="text-center"><?php echo $item['quantity']; ?></td>
+                        <td class="text-end"><?php echo formatPeso($item['price']); ?></td>
+                        <td class="text-end"><?php echo formatPeso($itemTotal2); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
+        <div class="total-section">
+            <div class="total-amount">
+                Total Amount:<?php echo formatPeso($total2); ?>
+            </div>
+        </div>
+
+        <div class="payment-method">
+            <strong>Payment Method:</strong> <?php echo $order['payment_method'] === 'gcash' ? 'GCash' : 'Cash on Pickup'; ?>
+        </div>
+
+    </div>
+    <?php endif; ?>
+    </div>
 
     <?php if (!$output_pdf): ?>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <?php endif; ?>
+    <!-- Cut guide (print-only) -->
+    <div class="cut-guide" aria-hidden="true"></div>
 </body>
 </html>
 <?php

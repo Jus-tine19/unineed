@@ -98,6 +98,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
 // Get filter parameters
 $status_filter = isset($_GET['status']) ? clean($_GET['status']) : '';
 $search = isset($_GET['search']) ? clean($_GET['search']) : '';
+// New: date range and type filter
+$date_from = isset($_GET['date_from']) ? clean($_GET['date_from']) : '';
+$date_to = isset($_GET['date_to']) ? clean($_GET['date_to']) : '';
 
 // Build query
 $where_clauses = [];
@@ -107,6 +110,16 @@ if ($status_filter) {
 if ($search) {
     $where_clauses[] = "(u.full_name LIKE '%$search%' OR u.email LIKE '%$search%' OR o.order_id LIKE '%$search%')";
 }
+// Date range filtering
+if (!empty($date_from) && !empty($date_to)) {
+    $where_clauses[] = "DATE(o.order_date) BETWEEN '$date_from' AND '$date_to'";
+} elseif (!empty($date_from)) {
+    $where_clauses[] = "DATE(o.order_date) >= '$date_from'";
+} elseif (!empty($date_to)) {
+    $where_clauses[] = "DATE(o.order_date) <= '$date_to'";
+}
+
+// (type filter removed)
 
 $where_sql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
 
@@ -175,28 +188,33 @@ $orders = mysqli_query($conn, $query);
             <?php endif; ?>
             
             <div class="filter-bar">
-                <form method="GET" class="row g-3">
-                    <div class="col-md-4">
-                        <input type="text" class="form-control" name="search" placeholder="Search by customer name, email, or order ID" value="<?php echo htmlspecialchars($search); ?>">
+                <form id="ordersFilterForm" method="GET" class="row g-2 align-items-end">
+                    <div class="col-12 col-md-4">
+                        <label class="form-label small mb-1">Search</label>
+                        <input type="text" class="form-control form-control-sm" name="search" placeholder="Customer, email, or order ID" value="<?php echo htmlspecialchars($search); ?>">
                     </div>
-                    <div class="col-md-3">
-                        <select class="form-select" name="status">
+                    <div class="col-12 col-sm-6 col-md-2">
+                        <label class="form-label small mb-1">Status</label>
+                        <select class="form-select form-select-sm" name="status">
                             <option value="">All Status</option>
                             <option value="pending_payment" <?php echo $status_filter === 'pending_payment' ? 'selected' : ''; ?>>Pending Payment</option>
-                            <option value="pending" <?php echo $status_filter === 'pending' ? 'selected' : ''; ?>>Pending (Processing)</option>
-                            <option value="ready for pickup" <?php echo $status_filter === 'ready for pickup' ? 'selected' : ''; ?>>Ready for Pickup</option>
+                            <option value="pending" <?php echo $status_filter === 'pending' ? 'selected' : ''; ?>>Pending</option>
+                            <option value="ready for pickup" <?php echo $status_filter === 'ready for pickup' ? 'selected' : ''; ?>>Ready Pickup</option>
                             <option value="completed" <?php echo $status_filter === 'completed' ? 'selected' : ''; ?>>Completed</option>
                             <option value="cancelled" <?php echo $status_filter === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-search me-2"></i>Filter
-                        </button>
+                    <div class="col-12 col-sm-6 col-md-2">
+                        <label class="form-label small mb-1">From</label>
+                        <input type="date" class="form-control form-control-sm" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
                     </div>
-                    <div class="col-md-2">
-                        <a href="orders.php" class="btn btn-outline-secondary w-100">
-                            <i class="bi bi-x-circle me-2"></i>Clear
+                    <div class="col-12 col-sm-6 col-md-2">
+                        <label class="form-label small mb-1">To</label>
+                        <input type="date" class="form-control form-control-sm" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-2 d-flex gap-2">
+                        <a href="orders.php" class="btn btn-sm btn-outline-secondary flex-grow-1">
+                            <i class="bi bi-x-circle me-1"></i>Clear
                         </a>
                     </div>
                 </form>
@@ -263,6 +281,9 @@ $orders = mysqli_query($conn, $query);
                                                 <span class="badge bg-<?php echo $current_badge_class; ?>">
                                                     <?php echo ucfirst($order_status_clean); ?>
                                                 </span>
+                                                <?php if ($order['order_status'] === 'cancelled' && !empty($order['cancellation_reason'])): ?>
+                                                    <div class="small text-muted mt-1">Reason: <?php echo htmlspecialchars(mb_strimwidth($order['cancellation_reason'], 0, 60, '...')); ?></div>
+                                                <?php endif; ?>
                                             </td>
                                             <td><?php echo date('M j, Y g:i A', strtotime($order['order_date'])); ?></td>
                                             <td>
@@ -360,6 +381,12 @@ $orders = mysqli_query($conn, $query);
                                                         <div class="alert alert-danger mb-4">
                                                             <i class="bi bi-exclamation-triangle-fill me-2"></i>
                                                             <strong>GCash Proof Missing.</strong> The student has not yet uploaded the receipt.
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($detail_data['cancellation_reason'])): ?>
+                                                        <div class="card card-body bg-light mb-4">
+                                                            <h6>Cancellation Reason</h6>
+                                                            <p class="mb-0 small text-muted"><?php echo nl2br(htmlspecialchars($detail_data['cancellation_reason'])); ?></p>
                                                         </div>
                                                     <?php endif; ?>
                                                     
@@ -571,6 +598,24 @@ $orders = mysqli_query($conn, $query);
                     });
                 }
             });
+
+            // Auto-submit filter form on change (debounced)
+            (function(){
+                const form = document.getElementById('ordersFilterForm');
+                if (!form) return;
+                let debounceTimer = null;
+                const submitDebounced = (delay) => {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => form.submit(), delay || 300);
+                };
+
+                form.querySelectorAll('select, input').forEach(el => {
+                    el.addEventListener('change', () => submitDebounced(300));
+                    if (el.tagName === 'INPUT' && el.type === 'text') {
+                        el.addEventListener('input', () => submitDebounced(800));
+                    }
+                });
+            })();
         });
 
         // Function to print receipt

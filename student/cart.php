@@ -38,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['clear_cart'])) {
 }
 
 // Validate current session cart against latest stock and calculate totals
+// Also fetch latest product images
 $cart_items = &$_SESSION['cart'];
 $subtotal = 0;
 $total_items = 0;
@@ -49,6 +50,17 @@ foreach ($cart_items as $key => $item) {
     $variant_id = isset($item['variant_id']) ? intval($item['variant_id']) : null;
     $available = 0;
 
+    // Fetch latest product info including image and preorder flag
+    $p_q = mysqli_query($conn, "SELECT image_path, image_url, stock_quantity, is_preorder FROM products WHERE product_id = $p_id LIMIT 1");
+    $prow = $p_q ? mysqli_fetch_assoc($p_q) : null;
+    
+    // Update cart item with latest image
+    if ($prow) {
+        // Always use database values as source of truth
+        $_SESSION['cart'][$key]['image_path'] = $prow['image_path'] ?: null;
+        $_SESSION['cart'][$key]['image_url'] = $prow['image_url'] ?: null;
+    }
+
     if ($variant_id) {
         $v_q = mysqli_query($conn, "SELECT stock_quantity FROM product_variants WHERE variant_id = $variant_id LIMIT 1");
         if ($v_q && mysqli_num_rows($v_q) > 0) {
@@ -56,19 +68,20 @@ foreach ($cart_items as $key => $item) {
             $available = intval($vrow['stock_quantity']);
         }
     } else {
-        $p_q = mysqli_query($conn, "SELECT stock_quantity FROM products WHERE product_id = $p_id LIMIT 1");
-        $prow = $p_q ? mysqli_fetch_assoc($p_q) : null;
         $available = intval($prow['stock_quantity'] ?? 0);
     }
 
-    if ($available <= 0) {
+    // If product is marked as pre-order/made-to-order, do not remove or reduce quantity based on stock
+    $is_preorder = !empty($prow['is_preorder']) && $prow['is_preorder'] == 1;
+
+    if ($available <= 0 && !$is_preorder) {
         unset($_SESSION['cart'][$key]);
         $cart_notifications[] = htmlspecialchars($item['product_name']) . " was removed from your cart because it is out of stock.";
         $checkout_disabled = true;
         continue;
     }
 
-    if ($item['quantity'] > $available) {
+    if (!$is_preorder && $item['quantity'] > $available) {
         $_SESSION['cart'][$key]['quantity'] = $available;
         $cart_notifications[] = htmlspecialchars($item['product_name']) . " quantity reduced to available stock ({$available}).";
         $checkout_disabled = true;
@@ -150,14 +163,21 @@ $total = $subtotal; // No tax or shipping for now
                                                 <input type="checkbox" name="selected_items[]" value="<?php echo htmlspecialchars($key); ?>" class="form-check-input cart-checkbox" checked data-price="<?php echo $item['price']; ?>" data-quantity="<?php echo $item['quantity']; ?>" style="width: 20px; height: 20px; cursor: pointer;">
                                             </div>
                                             <div class="col-md-2">
-                                                <?php if ($item['image_path']): ?>
+                                                <?php if ($item['image_path'] || $item['image_url']): ?>
                                                     <?php
-                                                        $cartImg = $item['image_path'];
-                                                        if (!preg_match('/^(https?:)?\\/\\//i', $cartImg) && strpos($cartImg, '/') !== 0) {
-                                                            $cartImg = '../' . ltrim($cartImg, '/');
+                                                        $cartImg = $item['image_path'] ?? $item['image_url'];
+                                                        // Ensure proper path for student context
+                                                        if (preg_match('/^(https?:)?\\/\\//i', $cartImg)) {
+                                                            // External URL or protocol-relative - use as is
+                                                        } elseif (strpos($cartImg, '/assets/') === 0) {
+                                                            // Absolute path from web root - add ../ prefix for student directory
+                                                            $cartImg = '..' . $cartImg;
+                                                        } elseif (strpos($cartImg, '../') !== 0 && strpos($cartImg, '/') !== 0) {
+                                                            // Relative path - add ../ prefix
+                                                            $cartImg = '../' . $cartImg;
                                                         }
                                                     ?>
-                                                    <img src="<?php echo htmlspecialchars($cartImg); ?>" alt="Product" class="img-fluid rounded" style="max-height: 90px; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                                    <img src="<?php echo htmlspecialchars($cartImg); ?>" alt="Product" class="img-fluid rounded" style="max-height: 90px; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" onerror="this.parentElement.style.display='none'; this.parentElement.nextElementSibling?.classList?.remove('d-none');">
                                                 <?php else: ?>
                                                     <div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 90px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                                                         <i class="bi bi-image text-muted fs-2"></i>
@@ -178,16 +198,9 @@ $total = $subtotal; // No tax or shipping for now
                                                 <p class="text-success fw-bold mb-0" style="font-size: 1.1rem;">₱<?php echo number_format($item['price'], 2); ?></p>
                                             </div>
                                             <div class="col-md-3">
-                                                <form method="POST" class="d-flex align-items-center gap-2">
+                                                <form method="POST" class="quantity-form">
                                                     <input type="hidden" name="cart_key" value="<?php echo htmlspecialchars($key); ?>">
-                                                    <button type="button" class="btn btn-outline-secondary" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;" onclick="this.nextElementSibling.stepDown(); this.form.submit();">
-                                                        <i class="bi bi-dash"></i>
-                                                    </button>
-                                                    <input type="number" name="quantity" value="<?php echo $item['quantity']; ?>" min="1" max="99" class="form-control form-control-sm text-center fw-bold" style="width: 60px; border-radius: 6px; height: 38px;" readonly>
-                                                    <button type="button" class="btn btn-outline-secondary" style="width: 38px; height: 38px; padding: 0; border-radius: 6px;" onclick="this.previousElementSibling.stepUp(); this.form.submit();">
-                                                        <i class="bi bi-plus"></i>
-                                                    </button>
-                                                    <button type="submit" name="update_quantity" class="btn btn-sm btn-primary d-none">Update</button>
+                                                    <input type="number" name="quantity" value="<?php echo $item['quantity']; ?>" min="1" max="99" class="form-control form-control-sm text-center fw-bold quantity-input" style="width: 80px; border-radius: 6px; height: 38px;">
                                                 </form>
                                             </div>
                                             <div class="col-md-2 text-end">
@@ -267,27 +280,6 @@ $total = $subtotal; // No tax or shipping for now
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../assets/js/script.js"></script>
     <script>
-        // Handle quantity updates
-        document.querySelectorAll('.btn-outline-secondary').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-                const form = this.closest('form');
-                const input = form.querySelector('input[name="quantity"]');
-                const currentVal = parseInt(input.value);
-                
-                if (this.querySelector('.bi-plus')) {
-                    input.value = currentVal + 1;
-                } else if (this.querySelector('.bi-dash') && currentVal > 1) {
-                    input.value = currentVal - 1;
-                }
-                
-                // Remove readonly to allow form submission
-                input.removeAttribute('readonly');
-                form.querySelector('[name="update_quantity"]').click();
-                input.setAttribute('readonly', 'readonly');
-            });
-        });
-
         // Update total when checkboxes change
         function updateTotal() {
             let total = 0;
@@ -303,47 +295,47 @@ $total = $subtotal; // No tax or shipping for now
             cb.addEventListener('change', updateTotal);
         });
 
-        // Cart quantity +/- buttons - prevent double submission
-        let isSubmitting = false;
-
-        document.querySelectorAll('.qty-decrease-cart').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-                if (isSubmitting) return; // Prevent double submission
-                
+        // Handle quantity input changes (native up/down spinner + typing)
+        document.querySelectorAll('.quantity-input').forEach(input => {
+            input.addEventListener('change', function() {
+                const val = parseInt(this.value) || 1;
                 const form = this.closest('.quantity-form');
-                const input = form.querySelector('.quantity-input');
-                let val = parseInt(input.value) || 1;
-                
-                if (val > 1) {
-                    val = val - 1;
-                    input.value = val;
-                    isSubmitting = true;
-                    btn.disabled = true;
-                    form.submit();
-                }
+                updateQuantityViaAjax(form, val);
             });
         });
 
-        document.querySelectorAll('.qty-increase-cart').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-                if (isSubmitting) return; // Prevent double submission
+        // AJAX function to update quantity without page reload
+        function updateQuantityViaAjax(form, quantity) {
+            const cartKey = form.querySelector('input[name="cart_key"]').value;
+            
+            // Update the checkbox's data-quantity attribute immediately
+            const checkbox = document.querySelector(`.cart-checkbox[value="${cartKey}"]`);
+            if (checkbox) {
+                const price = parseFloat(checkbox.getAttribute('data-price'));
+                checkbox.setAttribute('data-quantity', quantity);
                 
-                const form = this.closest('.quantity-form');
-                const input = form.querySelector('.quantity-input');
-                let val = parseInt(input.value) || 1;
-                const max = parseInt(input.max) || 99;
-                
-                if (val < max) {
-                    val = val + 1;
-                    input.value = val;
-                    isSubmitting = true;
-                    btn.disabled = true;
-                    form.submit();
+                // Update the product line total display
+                const cartItem = form.closest('.cart-item');
+                const totalPriceElement = cartItem.querySelector('.col-md-2.text-end p:first-child');
+                if (totalPriceElement) {
+                    const total = (price * quantity).toFixed(2);
+                    totalPriceElement.textContent = '₱' + parseFloat(total).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 }
-            });
-        });
+            }
+            
+            // Recalculate overall total
+            updateTotal();
+            
+            // Send AJAX request to backend
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: 'update_quantity=1&cart_key=' + encodeURIComponent(cartKey) + '&quantity=' + quantity
+            })
+            .catch(error => console.error('Error:', error));
+        }
 
         // Initial update
         updateTotal();

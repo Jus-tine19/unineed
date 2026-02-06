@@ -122,7 +122,86 @@ function updateCartCount() {
             });
     }
 }
+// Function to show the inline cancel form
+function showCancelForm(orderId) {
+    document.getElementById(`cancel-form-${orderId}`).classList.remove('d-none');
+}
 
+// Function to hide the inline cancel form
+function hideCancelForm(orderId) {
+    document.getElementById(`cancel-form-${orderId}`).classList.add('d-none');
+}
+
+// Toggle button and "Other" textbox visibility
+function toggleCancelBtn(orderId) {
+    const radios = document.getElementsByName(`reason_${orderId}`);
+    const otherContainer = document.getElementById(`other_text_container_${orderId}`);
+    const otherText = document.getElementById(`other_reason_${orderId}`);
+    const confirmBtn = document.getElementById(`confirm_btn_${orderId}`);
+    
+    let selectedValue = "";
+    for (const radio of radios) {
+        if (radio.checked) {
+            selectedValue = radio.value;
+            break;
+        }
+    }
+
+    // Show/Hide other textbox
+    if (selectedValue === 'other') {
+        otherContainer.classList.remove('d-none');
+        // Enable only if text is typed
+        confirmBtn.disabled = (otherText.value.trim() === "");
+    } else {
+        otherContainer.classList.add('d-none');
+        // Enable if any radio is picked (and it's not 'other')
+        confirmBtn.disabled = (selectedValue === "");
+    }
+}
+
+// Submit the cancellation via AJAX
+function processInlineCancel(orderId) {
+    const radios = document.getElementsByName(`reason_${orderId}`);
+    const otherText = document.getElementById(`other_reason_${orderId}`).value;
+    const btn = document.getElementById(`confirm_btn_${orderId}`);
+
+    let reason = "";
+    for (const radio of radios) {
+        if (radio.checked) {
+            reason = (radio.value === 'other') ? otherText.trim() : radio.value;
+            break;
+        }
+    }
+
+    if (!reason) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Processing...';
+
+    const formData = new FormData();
+    formData.append('order_id', orderId);
+    formData.append('reason', reason);
+
+    fetch('../api/cancel-order.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message, 'success');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showToast(data.message, 'danger');
+            btn.disabled = false;
+            btn.innerHTML = 'Confirm Cancellation';
+        }
+    })
+    .catch(err => {
+        showToast('System error. Please try again.', 'danger');
+        btn.disabled = false;
+    });
+}
 // Cancel Order flow: opens modal to collect reason, then submits
 function cancelOrder(orderId) {
     const modalEl = document.getElementById('cancelOrderModal');
@@ -606,49 +685,47 @@ document.addEventListener('DOMContentLoaded', function() {
     updateCartCount();
 });
 
-// Populate/reset modal when it's shown (supports data-bs-toggle buttons)
-document.addEventListener('DOMContentLoaded', function() {
+// Initialize cancel modal handlers (runs immediately or on DOMContentLoaded)
+function initCancelModal() {
     const cancelModal = document.getElementById('cancelOrderModal');
-    if (!cancelModal) return;
+    if (cancelModal) {
+        cancelModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget; // Button that triggered the modal
+            const orderId = button ? button.getAttribute('data-order-id') : null;
 
-    cancelModal.addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget; // Button that triggered the modal
-        const orderId = button ? button.getAttribute('data-order-id') : null;
+            // reset radios and other field
+            const radios = document.getElementsByName('cancel_reason_radio');
+            for (let i = 0; i < radios.length; i++) {
+                radios[i].checked = false;
+                radios[i].disabled = false;
+                // attach onchange handler explicitly to ensure behavior
+                radios[i].onchange = function() {
+                    const otherContainer = document.getElementById('cancel_reason_other_container');
+                    const confirmBtn = document.getElementById('cancel_confirm_btn');
+                    if (this.value === 'other') {
+                        if (otherContainer) otherContainer.style.display = 'block';
+                    } else {
+                        if (otherContainer) otherContainer.style.display = 'none';
+                    }
+                    if (confirmBtn) confirmBtn.disabled = false;
+                };
+            }
+            const otherInputEl = document.getElementById('cancel_reason_other');
+            const otherContainer = document.getElementById('cancel_reason_other_container');
+            if (otherInputEl) { otherInputEl.value = ''; otherInputEl.disabled = false; }
+            if (otherContainer) otherContainer.style.display = 'none';
 
-        // reset radios and other field
-        const radios = document.getElementsByName('cancel_reason_radio');
-        for (let i = 0; i < radios.length; i++) { 
-            radios[i].checked = false; 
-            radios[i].disabled = false; 
-            // attach onchange handler explicitly to ensure behavior
-            radios[i].onchange = function() {
-                const otherContainer = document.getElementById('cancel_reason_other_container');
-                const confirmBtn = document.getElementById('cancel_confirm_btn');
-                if (this.value === 'other') {
-                    if (otherContainer) otherContainer.style.display = 'block';
-                } else {
-                    if (otherContainer) otherContainer.style.display = 'none';
-                }
-                if (confirmBtn) confirmBtn.disabled = false;
-            };
-        }
-        const otherInputEl = document.getElementById('cancel_reason_other');
-        const otherContainer = document.getElementById('cancel_reason_other_container');
-        if (otherInputEl) { otherInputEl.value = ''; otherInputEl.disabled = false; }
-        if (otherContainer) otherContainer.style.display = 'none';
+            const confirmBtn = document.getElementById('cancel_confirm_btn');
+            if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerHTML = 'Cancel order'; }
 
-        const confirmBtn = document.getElementById('cancel_confirm_btn');
-        if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerHTML = 'Cancel order'; }
+            if (orderId) {
+                const hidden = document.getElementById('cancel_order_id');
+                if (hidden) hidden.value = orderId;
+            }
+        });
+    }
 
-        if (orderId) {
-            const hidden = document.getElementById('cancel_order_id');
-            if (hidden) hidden.value = orderId;
-        }
-    });
-});
-
-// Bind change listeners to radio inputs (works if they are dynamically added)
-document.addEventListener('DOMContentLoaded', function() {
+    // delegated listener for radio changes
     function handleRadioChange(e) {
         const radio = e.target;
         const otherContainer = document.getElementById('cancel_reason_other_container');
@@ -662,7 +739,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (confirmBtn) confirmBtn.disabled = false;
         }
     }
-
-    // delegate to the document so newly inserted radios are handled
     document.addEventListener('change', handleRadioChange);
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCancelModal);
+} else {
+    initCancelModal();
+}

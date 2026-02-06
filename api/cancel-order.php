@@ -114,7 +114,8 @@ try {
     }
 
     // Fetch order items & restore stock
-    $items_query = "SELECT oi.*, p.product_id, p.stock_quantity 
+    // Also fetch is_preorder flag so we skip restoring stock for pre-order/made-to-order products
+    $items_query = "SELECT oi.*, p.product_id, p.stock_quantity, p.is_preorder 
                     FROM order_items oi 
                     JOIN products p ON oi.product_id = p.product_id 
                     WHERE oi.order_id = ?";
@@ -137,6 +138,12 @@ try {
         $product_id = intval($item['product_id']);
         $variant_id = isset($item['variant_id']) ? intval($item['variant_id']) : null;
         
+        // If product is pre-order/made-to-order, skip restoring stock and variant
+        if (!empty($item['is_preorder']) && $item['is_preorder'] == 1) {
+            // Skip inventory changes for pre-order products
+            continue;
+        }
+
         // Restore base product stock (and log as inventory movement)
         $current_q = mysqli_query($conn, "SELECT stock_quantity, price FROM products WHERE product_id = $product_id LIMIT 1");
         $prow = $current_q ? mysqli_fetch_assoc($current_q) : null;

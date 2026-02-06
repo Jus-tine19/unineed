@@ -127,9 +127,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['activate_user'])) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user'])) {
     $user_id = clean($_POST['user_id']);
-    $query = "DELETE FROM users WHERE user_id = $user_id";
-    if (mysqli_query($conn, $query)) {
-        $success = "Student deleted successfully!";
+    
+    // Start transaction with foreign key constraint disabled
+    mysqli_query($conn, "SET FOREIGN_KEY_CHECKS=0");
+    mysqli_begin_transaction($conn);
+    try {
+        // Delete all related records - order doesn't matter with FK checks disabled
+        $tables_to_delete = [
+            "DELETE FROM inventory_movements WHERE created_by = $user_id",
+            "DELETE FROM notifications WHERE user_id = $user_id",
+            "DELETE FROM invoices WHERE order_id IN (SELECT order_id FROM orders WHERE user_id = $user_id)",
+            "DELETE FROM order_items WHERE order_id IN (SELECT order_id FROM orders WHERE user_id = $user_id)",
+            "DELETE FROM orders WHERE user_id = $user_id",
+            "DELETE FROM users WHERE user_id = $user_id"
+        ];
+        
+        foreach ($tables_to_delete as $query) {
+            if (!mysqli_query($conn, $query)) {
+                throw new Exception("Query failed: " . mysqli_error($conn));
+            }
+        }
+        
+        mysqli_commit($conn);
+        mysqli_query($conn, "SET FOREIGN_KEY_CHECKS=1");
+        $success = "Student and all related records deleted successfully!";
+    } catch (Exception $e) {
+        mysqli_rollback($conn);
+        mysqli_query($conn, "SET FOREIGN_KEY_CHECKS=1");
+        $error = "Failed to delete student: " . $e->getMessage();
     }
 }
 

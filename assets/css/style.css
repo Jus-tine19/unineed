@@ -72,6 +72,22 @@ body {
     overflow: hidden;
 }
 
+/* Ensure stat-cards stretch to equal heights inside dashboard rows */
+.stat-card {
+    min-height: 130px;
+    height: 100%;
+}
+
+/* Make columns in a stretch-row use flex so child cards fill full height */
+.row.align-items-stretch > [class*="col-"] {
+    display: flex;
+}
+.row.align-items-stretch > [class*="col-"] .stat-card {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+}
+
 .stat-card::before {
     content: '';
     position: absolute;

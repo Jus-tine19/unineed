@@ -51,9 +51,13 @@ if ($result->num_rows === 0) {
 
 $product = $result->fetch_assoc();
 
-// If product is not preorder, enforce stock checks
-if ($product['is_preorder'] == 0 && $requested_qty > $product['stock']) {
-    die(json_encode(['error' => 'Not enough stock']));
+// If product is not preorder, enforce stock checks (use correct fields)
+if (empty($product['is_preorder']) || $product['is_preorder'] == 0) {
+    $available = intval($product['stock_quantity'] ?? 0);
+    if ($quantity > $available) {
+        echo json_encode(['success' => false, 'message' => 'Not enough stock available']);
+        exit();
+    }
 }
 
 // Check if product is already in cart
@@ -69,7 +73,8 @@ if ($result->num_rows > 0) {
     
     // If product is not preorder, ensure new quantity doesn't exceed stock
     if (empty($product['is_preorder']) || $product['is_preorder'] == 0) {
-        if ($new_quantity > $product['stock_quantity']) {
+        $available = intval($product['stock_quantity'] ?? 0);
+        if ($new_quantity > $available) {
             echo json_encode(['success' => false, 'message' => 'Not enough stock available']);
             exit();
         }

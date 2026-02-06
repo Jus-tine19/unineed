@@ -39,6 +39,22 @@ if (empty($cart_items)) {
     exit();
 }
 
+// Fetch latest product images for cart items
+foreach ($selected_keys as $key) {
+    if (isset($_SESSION['cart'][$key])) {
+        $p_id = intval($_SESSION['cart'][$key]['product_id']);
+        $p_q = mysqli_query($conn, "SELECT image_path, image_url FROM products WHERE product_id = $p_id LIMIT 1");
+        if ($p_q && $prow = mysqli_fetch_assoc($p_q)) {
+            // Always use database values as source of truth
+            $_SESSION['cart'][$key]['image_path'] = $prow['image_path'] ?: null;
+            $_SESSION['cart'][$key]['image_url'] = $prow['image_url'] ?: null;
+            // Update cart_items with the latest image
+            $cart_items[$key]['image_path'] = $_SESSION['cart'][$key]['image_path'];
+            $cart_items[$key]['image_url'] = $_SESSION['cart'][$key]['image_url'];
+        }
+    }
+}
+
 $user_id = $_SESSION['user_id'];
 
 // Get user details
@@ -247,6 +263,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                             $note = "Product out of stock: " . $pname;
                             mysqli_query($conn, "INSERT INTO notifications (user_id, message, type, is_read) VALUES (1, '" . mysqli_real_escape_string($conn, $note) . "', 'stock', 0)");
                         }
+                            // Also deduct from parent product stock when variant is used
+                            $p_cur_q = mysqli_query($conn, "SELECT stock_quantity, price FROM products WHERE product_id = $p_id LIMIT 1");
+                            $p_cur = $p_cur_q ? mysqli_fetch_assoc($p_cur_q) : null;
+                            $p_current_stock = intval($p_cur['stock_quantity'] ?? 0);
+                            $p_new_stock = $p_current_stock - $qty;
+                            if ($p_new_stock < 0) $p_new_stock = 0;
+                            mysqli_query($conn, "UPDATE products SET stock_quantity = $p_new_stock WHERE product_id = $p_id");
+
+                            // Ensure price_at_movement column exists
+                            $col_check2 = mysqli_query($conn, "SHOW COLUMNS FROM inventory_movements LIKE 'price_at_movement'");
+                            if (mysqli_num_rows($col_check2) === 0) {
+                                mysqli_query($conn, "ALTER TABLE inventory_movements ADD COLUMN price_at_movement DECIMAL(10,2) NULL AFTER product_id");
+                            }
+
+                            $p_stock_change = $p_new_stock - $p_current_stock; // negative
+                            $p_mv_reason = mysqli_real_escape_string($conn, "Sale - Order #" . $order_id . " - " . ($user['full_name'] ?? 'Customer'));
+                            $ins_pmv = "INSERT INTO inventory_movements (product_id, price_at_movement, quantity_change, previous_quantity, new_quantity, movement_type, reason, created_by) ";
+                            $ins_pmv .= "VALUES ($p_id, " . floatval($p_cur['price'] ?? $price) . ", $p_stock_change, $p_current_stock, $p_new_stock, 'sale', '$p_mv_reason', {$_SESSION['user_id']})";
+                            mysqli_query($conn, $ins_pmv);
+
+                            // Notify admin if the parent product just went out of stock
+                            if ($p_current_stock > 0 && $p_new_stock == 0) {
+                                $pname = mysqli_real_escape_string($conn, $item['product_name']);
+                                $notep = "Product out of stock: " . $pname;
+                                mysqli_query($conn, "INSERT INTO notifications (user_id, message, type, is_read) VALUES (1, '" . mysqli_real_escape_string($conn, $notep) . "', 'stock', 0)");
+                            }
                     }
                 }
             }
@@ -424,21 +466,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                                             <tr>
                                                 <td class="ps-3">
                                                     <div class="d-flex align-items-center">
-                                                        <?php 
+                                                        <?php
                                                             $img = '';
                                                             if (!empty($item['image_path'])) {
                                                                 $img = $item['image_path'];
-                                                                // Add ../ prefix if not already absolute or relative with ../
-                                                                if (!preg_match('/^(https?:)?\\/\\//i', $img) && strpos($img, '/') !== 0 && strpos($img, '../') !== 0) {
-                                                                    $img = '../' . ltrim($img, '/');
-                                                                }
                                                             } elseif (!empty($item['image_url'])) {
                                                                 $img = $item['image_url'];
+                                                            }
+
+                                                            if (!empty($img)) {
+                                                                // Ensure proper path for student context
+                                                                if (preg_match('/^(https?:)?\\/\\//i', $img)) {
+                                                                    // External URL - use as is
+                                                                } elseif (strpos($img, '/assets/') === 0) {
+                                                                    // Absolute path from web root - add ../ prefix for student directory
+                                                                    $img = '..' . $img;
+                                                                } elseif (strpos($img, '../') !== 0 && strpos($img, '/') !== 0) {
+                                                                    // Relative path - add ../ prefix
+                                                                    $img = '../' . ltrim($img, '/');
+                                                                }
                                                             } else {
-                                                                $img = '../assets/images/no-image.png';
+                                                                $img = '../assets/images/avatar.png';
                                                             }
                                                         ?>
-                                                        <img src="<?php echo htmlspecialchars($img); ?>" class="product-img-checkout me-3 border" alt="<?php echo htmlspecialchars($item['product_name']); ?>">
+                                                        <img src="<?php echo htmlspecialchars($img); ?>" class="product-img-checkout me-3 border" alt="<?php echo htmlspecialchars($item['product_name']); ?>" onerror="this.src='../assets/images/avatar.png'">
                                                         <div>
                                                             <div class="fw-bold"><?php echo htmlspecialchars($item['product_name']); ?></div>
                                                             <?php if (!empty($item['variants'])): ?>
@@ -539,6 +590,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         </div>
     </div>
 
+    <!-- Non-Refundable Downpayment Modal -->
+    <div class="modal fade" id="downpaymentWarningModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-warning">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title text-white"><i class="bi bi-exclamation-triangle-fill me-2"></i>Important Notice</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning mb-3" role="alert">
+                        <strong>Downpayment is Non-Refundable</strong>
+                    </div>
+                    <p class="mb-3">
+                        By selecting the downpayment option, you acknowledge that:
+                    </p>
+                    <ul class="mb-3">
+                        <li>The downpayment of <strong id="downpaymentWarningAmount">₱0.00</strong> is <strong class="text-danger">NOT refundable</strong></li>
+                        <li>The remaining balance of <strong id="remainingBalanceWarningAmount">₱0.00</strong> must be paid upon claiming your order</li>
+                        <li>If you cancel your order, the downpayment will be forfeited</li>
+                    </ul>
+                    <p class="small text-muted mb-0">
+                        Please ensure you have read and understood these terms before proceeding with the downpayment.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Go Back</button>
+                    <button type="button" class="btn btn-warning text-white" data-bs-dismiss="modal" id="acknowledgeDownpayment">I Understand & Accept</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
     const totalAmount = <?php echo $total; ?>;
     const downPaymentAmount = <?php echo $down_payment_amount; ?>;
@@ -574,7 +657,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             shouldShow = true;
             if (paymentOption === 'down_payment') {
                 amountDue = downPaymentAmount;
-                infoText = `You are paying ₱${downPaymentAmount.toFixed(2)} as downpayment now. The remaining balance of ₱${remainingBalance.toFixed(2)} will be due when claiming your order.`;
+                infoText = `You are paying ₱${downPaymentAmount.toFixed(2)} as downpayment now. The remaining balance of ₱${remainingBalance.toFixed(2)} must be paid upon claiming your order.`;
             } else if (paymentOption === 'full_payment') {
                 amountDue = totalAmount;
                 infoText = `You are paying the full amount of ₱${totalAmount.toFixed(2)}. No remaining balance.`;
@@ -607,10 +690,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
 
     // Add event listeners to payment option radio buttons
     document.addEventListener('DOMContentLoaded', function() {
-        const paymentOptions = document.querySelectorAll('input[name="payment_option"]');
-        paymentOptions.forEach(option => {
-            option.addEventListener('change', updatePaymentSummary);
+        // Show downpayment warning modal when downpayment is selected
+        document.querySelectorAll('input[name="payment_option"]').forEach(option => {
+            option.addEventListener('change', function() {
+                if (this.value === 'down_payment') {
+                    document.getElementById('downpaymentWarningAmount').textContent = '₱' + downPaymentAmount.toFixed(2);
+                    document.getElementById('remainingBalanceWarningAmount').textContent = '₱' + remainingBalance.toFixed(2);
+                    
+                    // Show modal using Bootstrap 5
+                    const modalElement = document.getElementById('downpaymentWarningModal');
+                    if (modalElement) {
+                        const warningModal = new bootstrap.Modal(modalElement);
+                        warningModal.show();
+                    }
+                }
+                updatePaymentSummary();
+            });
         });
+        
         const paymentMethods = document.querySelectorAll('input[name="payment_method"]');
         paymentMethods.forEach(method => {
             method.addEventListener('change', updatePaymentSummary);
@@ -630,5 +727,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         }
     }
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

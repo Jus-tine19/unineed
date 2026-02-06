@@ -85,7 +85,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
                     'product_name' => $product['product_name'],
                     'price' => $variant_price > 0 ? $variant_price : $product['price'],
                     'quantity' => $quantity,
-                    'image_path' => $product['image_path'],
+                    'image_path' => $product['image_path'] ?? $product['image_url'] ?? null,
+                    'image_url' => $product['image_url'] ?? null,
                     'variants' => $variants,
                     'requires_down_payment' => $product['requires_down_payment']
                 ];

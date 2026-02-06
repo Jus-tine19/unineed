@@ -25,6 +25,15 @@ if (!$invoice) {
     exit;
 }
 
+// Prevent viewing invoices for cancelled orders
+$order_check = mysqli_query($conn, "SELECT order_status FROM orders WHERE order_id = " . intval($invoice['order_id']) . " LIMIT 1");
+$order_row = $order_check ? mysqli_fetch_assoc($order_check) : null;
+if ($order_row && $order_row['order_status'] === 'cancelled') {
+    // Redirect back to invoicing list - do not show invoice for cancelled orders
+    header('Location: invoicing.php');
+    exit;
+}
+
 // Get order items - simplified query without variant_id
 $items_query = "SELECT oi.*, p.product_name 
                 FROM order_items oi 

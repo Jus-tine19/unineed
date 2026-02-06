@@ -39,7 +39,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($user['user_type'] === 'admin') {
                 header('Location: admin/dashboard.php');
             } else {
-                header('Location: student/products.php'); // Updated redirect
+                // If student needs to change password, redirect to settings first
+                if ($_SESSION['require_password_change'] ?? false) {
+                    header('Location: student/settings.php?force_change=1');
+                } else {
+                    header('Location: student/products.php');
+                }
             }
             exit();
         } else {

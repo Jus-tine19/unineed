@@ -14,7 +14,8 @@ $sales_query = "SELECT
                 AVG(total_amount) as avg_order_value,
                 SUM(CASE WHEN order_status = 'completed' THEN total_amount ELSE 0 END) as completed_sales
                 FROM orders 
-                WHERE DATE(order_date) BETWEEN '$date_from' AND '$date_to'";
+                WHERE DATE(order_date) BETWEEN '$date_from' AND '$date_to'
+                AND order_status != 'cancelled'";
 $sales_result = mysqli_query($conn, $sales_query);
 $sales_data = mysqli_fetch_assoc($sales_result);
 
@@ -24,6 +25,7 @@ $total_revenue = floatval($sales_data['total_sales'] ?? 0);
 $status_query = "SELECT order_status, COUNT(*) as count 
                 FROM orders 
                 WHERE DATE(order_date) BETWEEN '$date_from' AND '$date_to'
+                AND order_status != 'cancelled'
                 GROUP BY order_status";
 $status_result = mysqli_query($conn, $status_query);
 
@@ -33,6 +35,7 @@ $top_products_query = "SELECT p.product_name, SUM(oi.quantity) as total_sold, SU
                        JOIN products p ON oi.product_id = p.product_id
                        JOIN orders o ON oi.order_id = o.order_id
                        WHERE DATE(o.order_date) BETWEEN '$date_from' AND '$date_to'
+                       AND o.order_status != 'cancelled'
                        GROUP BY p.product_id
                        ORDER BY total_sold DESC
                        LIMIT 10";
@@ -40,15 +43,16 @@ $top_products = mysqli_query($conn, $top_products_query);
 
 // Total Sold by Product and Variant
 $total_sold_query = "SELECT 
-                        p.product_name, 
-                        oi.variant_value,
-                        SUM(oi.quantity) as total_sold 
-                     FROM order_items oi
-                     JOIN products p ON oi.product_id = p.product_id
-                     JOIN orders o ON oi.order_id = o.order_id
-                     WHERE DATE(o.order_date) BETWEEN '$date_from' AND '$date_to'
-                     GROUP BY p.product_id, oi.variant_value
-                     ORDER BY total_sold DESC";
+                                p.product_name, 
+                                oi.variant_value,
+                                SUM(oi.quantity) as total_sold 
+                            FROM order_items oi
+                            JOIN products p ON oi.product_id = p.product_id
+                            JOIN orders o ON oi.order_id = o.order_id
+                            WHERE DATE(o.order_date) BETWEEN '$date_from' AND '$date_to'
+                            AND o.order_status != 'cancelled'
+                            GROUP BY p.product_id, oi.variant_value
+                            ORDER BY total_sold DESC";
 $total_sold_result = mysqli_query($conn, $total_sold_query);
 $total_sold_data = [];
 if ($total_sold_result) {
@@ -81,6 +85,7 @@ $daily_sales_query = "SELECT DATE(order_date) as date,
                       SUM(total_amount) as sales
                       FROM orders
                       WHERE DATE(order_date) BETWEEN '$date_from' AND '$date_to'
+                      AND order_status != 'cancelled'
                       GROUP BY DATE(order_date)
                       ORDER BY date ASC";
 $daily_sales = mysqli_query($conn, $daily_sales_query);
@@ -96,6 +101,7 @@ $detailed_orders_query = "SELECT o.order_id, o.order_date, o.total_amount, o.ord
                           LEFT JOIN order_items oi ON o.order_id = oi.order_id
                           LEFT JOIN products p ON oi.product_id = p.product_id
                           WHERE DATE(o.order_date) BETWEEN '$date_from' AND '$date_to'
+                          AND o.order_status != 'cancelled'
                           GROUP BY o.order_id
                           ORDER BY o.order_date DESC";
 $detailed_orders = mysqli_query($conn, $detailed_orders_query);
@@ -107,6 +113,7 @@ $preorder_query = "SELECT p.product_id, p.product_name, oi.variant_value, SUM(oi
                    JOIN orders o ON oi.order_id = o.order_id
                    WHERE p.is_preorder = 1
                    AND DATE(o.order_date) BETWEEN '$date_from' AND '$date_to'
+                   AND o.order_status != 'cancelled'
                    GROUP BY p.product_id, oi.variant_value
                    ORDER BY preorder_count DESC";
 $preorder_result = mysqli_query($conn, $preorder_query);
@@ -185,7 +192,7 @@ if ($preorder_result) {
         
         <div class="content-area">
             <div class="filter-bar no-print">
-                <form method="GET" class="row g-3">
+                <form id="reportsFilterForm" method="GET" class="row g-3">
                     <div class="col-md-3">
                         <label class="form-label">Date From</label>
                         <input type="date" class="form-control" name="date_from" value="<?php echo $date_from; ?>" required>
@@ -193,11 +200,6 @@ if ($preorder_result) {
                     <div class="col-md-3">
                         <label class="form-label">Date To</label>
                         <input type="date" class="form-control" name="date_to" value="<?php echo $date_to; ?>" required>
-                    </div>
-                    <div class="col-md-2 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-search me-2"></i>Generate
-                        </button>
                     </div>
                     <div class="col-md-4 d-flex align-items-end gap-2">
                         <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('today')">Today</button>
@@ -669,6 +671,25 @@ if ($preorder_result) {
                  printWindow.close();
             }, 500);
         }
+    </script>
+    <script>
+        // Auto-submit reports filter form on change (debounced)
+        (function(){
+            const form = document.getElementById('reportsFilterForm');
+            if (!form) return;
+            let debounceTimer = null;
+            const submitDebounced = (delay) => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => form.submit(), delay || 300);
+            };
+
+            form.querySelectorAll('select, input').forEach(el => {
+                el.addEventListener('change', () => submitDebounced(300));
+                if (el.tagName === 'INPUT' && el.type === 'text') {
+                    el.addEventListener('input', () => submitDebounced(800));
+                }
+            });
+        })();
     </script>
 </body>
 </html>

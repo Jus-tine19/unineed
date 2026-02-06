@@ -42,6 +42,10 @@ if ($order['order_status'] !== 'completed' || $order['payment_status'] !== 'paid
     die('This invoice is only available for completed and paid orders.');
 }
 
+// Redirect to unified receipt view used by admin for consistent layout
+header('Location: receipt.php?order_id=' . $order_id);
+exit;
+
 // Get order items
 $items_query = "SELECT oi.*, p.product_name 
                 FROM order_items oi 

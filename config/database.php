@@ -118,7 +118,7 @@ function requireStudent() {
         if ($res && $row = mysqli_fetch_assoc($res)) {
             if (password_verify('@Student01', $row['password'])) {
                 $_SESSION['require_password_change'] = true;
-                header('Location: /unineeds/student/settings.php?force_change=1');
+                header('Location: ' . dirname($_SERVER['REQUEST_URI']) . '/settings.php?force_change=1');
                 exit();
             }
         }

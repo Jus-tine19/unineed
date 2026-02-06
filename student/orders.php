@@ -92,7 +92,7 @@ if (isset($_GET['id'])) {
             
             <?php if ($order_details): ?>
                 <div class="row g-4">
-                    <div class="col-md-8">
+                    <div class="col-md-12">
                         <div class="card mb-4">
                             <div class="card-header">
                                 <div class="d-flex justify-content-between align-items-center">

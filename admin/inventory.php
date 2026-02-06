@@ -242,7 +242,7 @@ $movements = mysqli_query($conn, $movements_query);
                 </div>
             <?php endif; ?>
             
-            <div class="row g-4 mb-4">
+            <div class="row g-4 mb-4 align-items-stretch">
                 <div class="col-md-3">
                     <div class="stat-card stat-primary">
                         <div class="stat-icon">

@@ -28,18 +28,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
 
 // Handle Password Change
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
-    $current_password = $_POST['current_password'];
+    $current_password = $_POST['current_password'] ?? '';
     $new_password = $_POST['new_password'];
     $confirm_password = $_POST['confirm_password'];
+    $is_force_change = isset($_SESSION['require_password_change']) || isset($_GET['force_change']);
     
-    if (password_verify($current_password, $user['password'])) {
+    // For forced password change, verify the default password instead of current password
+    if ($is_force_change && password_verify('@Student01', $user['password'])) {
+        // Allow password change without verifying old password on first login
+        $password_verified = true;
+    } elseif (!$is_force_change && password_verify($current_password, $user['password'])) {
+        // Normal password change requires current password
+        $password_verified = true;
+    } else {
+        $password_verified = false;
+    }
+    
+    if ($password_verified) {
         if ($new_password === $confirm_password) {
             if (strlen($new_password) >= 6) {
                 $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
                 $update_query = "UPDATE users SET password = '$hashed_password' WHERE user_id = $user_id";
                 
                 if (mysqli_query($conn, $update_query)) {
-                    $success = "Password changed successfully!";
+                    // Clear the force password change flag
+                    unset($_SESSION['require_password_change']);
+                    $success = "Password changed successfully! You can now access your account normally.";
                 } else {
                     $error = "Failed to change password.";
                 }
@@ -50,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
             $error = "New passwords do not match.";
         }
     } else {
-        $error = "Current password is incorrect.";
+        $error = $is_force_change ? "Unable to verify your account." : "Current password is incorrect.";
     }
 }
 ?>
@@ -136,14 +150,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
                 <div class="col-md-6">
                     <div class="card">
                         <div class="card-header">
-                            <h5 class="mb-0"><i class="bi bi-shield-lock me-2"></i>Change Password</h5>
+                            <h5 class="mb-0"><i class="bi bi-shield-lock me-2"></i><?php echo (isset($_SESSION['require_password_change']) || isset($_GET['force_change'])) ? 'Set Your Password' : 'Change Password'; ?></h5>
                         </div>
                         <div class="card-body">
                             <form method="POST">
+                                <?php if (!(isset($_SESSION['require_password_change']) || isset($_GET['force_change']))): ?>
                                 <div class="mb-3">
                                     <label class="form-label">Current Password *</label>
                                     <input type="password" class="form-control" name="current_password" required>
                                 </div>
+                                <?php else: ?>
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    Please set a secure password for your account to complete your registration.
+                                </div>
+                                <?php endif; ?>
                                 <div class="mb-3">
                                     <label class="form-label">New Password *</label>
                                     <input type="password" class="form-control" name="new_password" required minlength="6">
@@ -154,7 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
                                     <input type="password" class="form-control" name="confirm_password" required minlength="6">
                                 </div>
                                 <button type="submit" name="change_password" class="btn btn-warning mt-3">
-                                    <i class="bi bi-key me-2"></i>Change Password
+                                    <i class="bi bi-key me-2"></i><?php echo (isset($_SESSION['require_password_change']) || isset($_GET['force_change'])) ? 'Set Password' : 'Change Password'; ?>
                                 </button>
                             </form>
                         </div>
